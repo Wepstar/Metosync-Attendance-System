@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metosync — Platform</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="shared.js"></script>
+</head>
+<body class="bg-[#f4f7f5] min-h-screen">
+<div id="app" class="max-w-md mx-auto p-4"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
+<script>
+let state = { session: null, isAdmin: false, role: null };
+let errorMsg = '';
+let sectionUnlocked = null; // 'registry' | 'accounts' | null
+let sectionPwInput = '';
+
+function app() { return document.getElementById('app'); }
+
+async function init() {
+  state = await getSessionAndRole();
+  render();
+}
+
+function render() {
+  if (!state.session) return renderLogin();
+  if (!state.isAdmin) return renderNoAccess();
+  if (sectionUnlocked) return renderSection(sectionUnlocked);
+  renderLanding();
+}
+
+function renderLogin() {
+  app().innerHTML = `
+    <h1 class="text-xl font-bold text-center mt-10 mb-4">Metosync Platform Login</h1>
+    <input id="email" type="email" autocomplete="off" placeholder="Email" class="w-full border rounded-xl px-4 py-3 mb-3">
+    <div class="relative mb-3">
+      <input id="password" type="password" autocomplete="off" placeholder="Password" class="w-full border rounded-xl px-4 py-3 pr-10">
+      <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <button id="loginBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">Log In</button>`;
+  document.getElementById('loginBtn').onclick = async () => {
+    errorMsg = '';
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { errorMsg = error.message; render(); return; }
+    state = await getSessionAndRole();
+    render();
+  };
+}
+
+function renderNoAccess() {
+  app().innerHTML = `
+    <div class="text-center mt-10">
+      <p class="text-gray-600 mb-3">This account does not have platform-admin access.</p>
+      <button id="logoutBtn" class="text-sm text-blue-600">Log out</button>
+    </div>`;
+  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); state = { session: null, isAdmin: false, role: null }; render(); };
+}
+
+function renderLanding() {
+  app().innerHTML = `
+    <h1 class="text-xl font-bold text-center mt-10 mb-1">Welcome</h1>
+    <p class="text-sm text-gray-500 text-center mb-6">Signed in as ${state.role}</p>
+    <div class="space-y-3">
+      ${state.role === 'owner' ? `<button id="ownerBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">Owner Dashboard</button>` : ''}
+      <button id="registryBtn" class="w-full bg-gray-700 text-white rounded-xl py-3 font-medium">Registry</button>
+      <button id="accountsBtn" class="w-full bg-gray-700 text-white rounded-xl py-3 font-medium">Accounts &amp; Billing</button>
+    </div>
+    <button id="logoutBtn" class="w-full text-sm text-blue-600 mt-6">Log out</button>`;
+  if (state.role === 'owner') document.getElementById('ownerBtn').onclick = () => { sectionUnlocked = 'owner'; render(); };
+  document.getElementById('registryBtn').onclick = () => promptSectionPassword('registry');
+  document.getElementById('accountsBtn').onclick = () => promptSectionPassword('accounts');
+  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); state = { session: null, isAdmin: false, role: null }; render(); };
+}
+
+async function promptSectionPassword(section) {
+  errorMsg = '';
+  const { data: isSet } = await sb.rpc('section_password_is_set', { p_section: section });
+  app().innerHTML = `
+    <h1 class="text-lg font-bold text-center mt-10 mb-4 capitalize">${section} — Password Required</h1>
+    <div class="relative mb-3">
+      <input id="sectionPw" type="password" autocomplete="off" placeholder="${isSet ? 'Enter password' : 'Set a new password'}" class="w-full border rounded-xl px-4 py-3 pr-10">
+      <button type="button" onclick="toggleEye('sectionPw',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <button id="submitPwBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">${isSet ? 'Unlock' : 'Set & Continue'}</button>
+    <button id="backBtn" class="w-full text-sm text-gray-500 mt-3">← Back</button>`;
+  document.getElementById('backBtn').onclick = () => { errorMsg = ''; render(); };
+  document.getElementById('submitPwBtn').onclick = async () => {
+    const pw = document.getElementById('sectionPw').value;
+    if (!pw) { errorMsg = 'Enter a password.'; promptSectionPassword(section); return; }
+    if (!isSet) {
+      const { error } = await sb.rpc('set_section_password', { p_section: section, p_password: pw });
+      if (error) { errorMsg = error.message; promptSectionPassword(section); return; }
+      sectionUnlocked = section; render(); return;
+    }
+    const { data: ok, error } = await sb.rpc('verify_section_password', { p_section: section, p_password: pw });
+    if (error) { errorMsg = error.message; promptSectionPassword(section); return; }
+    if (!ok) { errorMsg = 'Incorrect password.'; promptSectionPassword(section); return; }
+    sectionUnlocked = section; render();
+  };
+}
+
+function renderSection(section) {
+  app().innerHTML = `
+    <h1 class="text-lg font-bold text-center mt-10 mb-4 capitalize">${section}</h1>
+    <p class="text-sm text-gray-500 text-center mb-6">Content for this section comes next — this confirms access control is working.</p>
+    <button id="backBtn" class="w-full text-sm text-gray-500">← Back</button>`;
+  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+}
+
+init();
+</script>
+</body>
+</html>
