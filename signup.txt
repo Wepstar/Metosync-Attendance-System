@@ -19,7 +19,7 @@ function app() { return document.getElementById('app'); }
 function render() {
   app().innerHTML = `
     <div class="text-center mt-6 mb-4">
-      <img src="metosync-logo.png" class="h-14 mx-auto mb-2" alt="Metosync">
+      <img src="metosync-logo.png" class="h-20 mx-auto mb-3 drop-shadow-lg" alt="Metosync">
       <h1 class="text-xl font-bold text-[#0d2a4d]">Company Registration</h1>
     </div>
     ${!onboardingCode ? `<p class="text-red-600 text-sm text-center mb-3">No invite code found — please start from your invite link.</p>` : ''}
