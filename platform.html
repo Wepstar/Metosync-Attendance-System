@@ -13,8 +13,10 @@
 <script>
 let state = { session: null, isAdmin: false, role: null };
 let errorMsg = '';
-let sectionUnlocked = null; // 'registry' | 'accounts' | null
+let sectionUnlocked = null; // 'registry' | 'accounts' | 'owner' | null
 let sectionPwInput = '';
+let generatedInviteCode = '';
+let generatedCompanyCode = '';
 
 function app() { return document.getElementById('app'); }
 
@@ -104,15 +106,33 @@ async function promptSectionPassword(section) {
   };
 }
 
-let generatedInviteCode = '';
-
 function renderSection(section) {
   if (section === 'owner') return renderOwnerDashboard();
+  if (section === 'registry') return renderRegistry();
   app().innerHTML = `
     <h1 class="text-lg font-bold text-center mt-10 mb-4 capitalize">${section}</h1>
     <p class="text-sm text-gray-500 text-center mb-6">Content for this section comes next — this confirms access control is working.</p>
     <button id="backBtn" class="w-full text-sm text-gray-500">← Back</button>`;
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+}
+
+function renderRegistry() {
+  app().innerHTML = `
+    <div class="flex justify-between items-center mt-6 mb-4">
+      <h1 class="text-lg font-bold">Registry</h1>
+      <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+    </div>
+    <div class="bg-white rounded-2xl p-4 shadow-sm">
+      <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
+      <button id="genCompanyInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
+      ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedCompanyCode}</p>` : ''}
+    </div>`;
+  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  document.getElementById('genCompanyInviteBtn').onclick = async () => {
+    const { data, error } = await sb.rpc('create_onboarding_invite');
+    if (!error) generatedCompanyCode = data;
+    renderRegistry();
+  };
 }
 
 async function renderOwnerDashboard() {
@@ -160,6 +180,12 @@ async function renderOwnerDashboard() {
       <h2 class="font-medium mb-2 text-sm">Invite a Platform Admin</h2>
       <button id="genInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
       ${generatedInviteCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedInviteCode}</p>` : ''}
+    </div>
+
+    <div class="bg-white rounded-2xl p-4 shadow-sm mt-4">
+      <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
+      <button id="genCompanyInviteBtn2" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
+      ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedCompanyCode}</p>` : ''}
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
@@ -168,9 +194,14 @@ async function renderOwnerDashboard() {
     if (!error) generatedInviteCode = data;
     renderOwnerDashboard();
   };
+  document.getElementById('genCompanyInviteBtn2').onclick = async () => {
+    const { data, error } = await sb.rpc('create_onboarding_invite');
+    if (!error) generatedCompanyCode = data;
+    renderOwnerDashboard();
+  };
 }
 
 init();
 </script>
 </body>
-</html>" " 
+</html>
