@@ -104,12 +104,70 @@ async function promptSectionPassword(section) {
   };
 }
 
+let generatedInviteCode = '';
+
 function renderSection(section) {
+  if (section === 'owner') return renderOwnerDashboard();
   app().innerHTML = `
     <h1 class="text-lg font-bold text-center mt-10 mb-4 capitalize">${section}</h1>
     <p class="text-sm text-gray-500 text-center mb-6">Content for this section comes next — this confirms access control is working.</p>
     <button id="backBtn" class="w-full text-sm text-gray-500">← Back</button>`;
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+}
+
+async function renderOwnerDashboard() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
+  const { data: companies, error } = await sb.rpc('platform_list_companies');
+  if (error) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${error.message}</p>`; return; }
+
+  const totalCompanies = companies.length;
+  const totalStaff = companies.reduce((sum, c) => sum + Number(c.staff_count), 0);
+
+  const rows = companies.map(c => `
+    <tr class="border-b">
+      <td class="py-2 px-3">${c.name}</td>
+      <td class="py-2 px-3 font-mono text-xs">${c.org_code}</td>
+      <td class="py-2 px-3">${c.staff_count}</td>
+      <td class="py-2 px-3 capitalize">${c.status}</td>
+    </tr>`).join('');
+
+  app().innerHTML = `
+    <div class="flex justify-between items-center mt-6 mb-4">
+      <h1 class="text-lg font-bold">Owner Dashboard</h1>
+      <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="bg-white rounded-2xl p-4 shadow-sm text-center">
+        <p class="text-2xl font-bold text-[#0d2a4d]">${totalCompanies}</p>
+        <p class="text-xs text-gray-500">Companies</p>
+      </div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm text-center">
+        <p class="text-2xl font-bold text-[#0d2a4d]">${totalStaff}</p>
+        <p class="text-xs text-gray-500">Total Staff</p>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 overflow-x-auto">
+      <h2 class="font-medium mb-2 text-sm">Companies</h2>
+      <table class="w-full text-sm text-left">
+        <thead><tr class="border-b text-gray-500"><th class="py-2 px-3">Name</th><th class="py-2 px-3">Code</th><th class="py-2 px-3">Staff</th><th class="py-2 px-3">Status</th></tr></thead>
+        <tbody>${rows || '<tr><td class="py-4 px-3 text-gray-400" colspan="4">No companies yet.</td></tr>'}</tbody>
+      </table>
+    </div>
+
+    <div class="bg-white rounded-2xl p-4 shadow-sm">
+      <h2 class="font-medium mb-2 text-sm">Invite a Platform Admin</h2>
+      <button id="genInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
+      ${generatedInviteCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedInviteCode}</p>` : ''}
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  document.getElementById('genInviteBtn').onclick = async () => {
+    const { data, error } = await sb.rpc('create_platform_invite');
+    if (!error) generatedInviteCode = data;
+    renderOwnerDashboard();
+  };
 }
 
 init();
