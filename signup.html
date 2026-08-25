@@ -9,12 +9,26 @@
 <script src="shared.js"></script>
 </head>
 <body class="bg-[#f4f7f5] min-h-screen">
-<div id="app" class="max-w-lg mx-auto p-4"></div>
+<div id="app" class="max-w-lg mx-auto p-4"><p class="text-gray-400 text-center mt-10">Verifying your invite…</p></div>
 <script>
 let errorMsg = '';
 const onboardingCode = sessionStorage.getItem('metosync_onboarding_code') || '';
 
 function app() { return document.getElementById('app'); }
+
+async function guardAndInit() {
+  if (!onboardingCode) {
+    window.location.href = 'welcome.html';
+    return;
+  }
+  const { data: isValid } = await sb.rpc('check_onboarding_invite', { p_code: onboardingCode });
+  if (!isValid) {
+    sessionStorage.removeItem('metosync_onboarding_code');
+    window.location.href = 'welcome.html';
+    return;
+  }
+  render();
+}
 
 function render() {
   app().innerHTML = `
@@ -22,7 +36,6 @@ function render() {
       <img src="metosync-logo.png" class="h-14 mx-auto mb-2" alt="Metosync">
       <h1 class="text-xl font-bold text-[#0d2a4d]">Company Registration</h1>
     </div>
-    ${!onboardingCode ? `<p class="text-red-600 text-sm text-center mb-3">No invite code found — please start from your invite link.</p>` : ''}
 
     <div class="bg-white rounded-2xl p-5 shadow-sm">
       <div class="grid grid-cols-4 gap-2 mb-2">
@@ -71,7 +84,6 @@ function render() {
 
 async function signup() {
   errorMsg = '';
-  if (!onboardingCode) { errorMsg = 'Missing invite code.'; render(); return; }
 
   const title = document.getElementById('title').value;
   const firstName = document.getElementById('firstName').value.trim();
@@ -119,7 +131,7 @@ async function signup() {
   window.location.href = 'admin.html';
 }
 
-render();
+guardAndInit();
 </script>
 </body>
 </html>
