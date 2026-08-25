@@ -1,1 +1,125 @@
-"<h1>Sign Up</h1>" 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metosync — Sign Up</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="shared.js"></script>
+</head>
+<body class="bg-[#f4f7f5] min-h-screen">
+<div id="app" class="max-w-lg mx-auto p-4"></div>
+<script>
+let errorMsg = '';
+const onboardingCode = sessionStorage.getItem('metosync_onboarding_code') || '';
+
+function app() { return document.getElementById('app'); }
+
+function render() {
+  app().innerHTML = `
+    <div class="text-center mt-6 mb-4">
+      <img src="metosync-logo.png" class="h-14 mx-auto mb-2" alt="Metosync">
+      <h1 class="text-xl font-bold text-[#0d2a4d]">Company Registration</h1>
+    </div>
+    ${!onboardingCode ? `<p class="text-red-600 text-sm text-center mb-3">No invite code found — please start from your invite link.</p>` : ''}
+
+    <div class="bg-white rounded-2xl p-5 shadow-sm">
+      <div class="grid grid-cols-4 gap-2 mb-2">
+        <select id="title" class="border rounded-xl px-2 py-3 text-sm">
+          <option value="">Title</option>
+          <option>Mr.</option><option>Mrs.</option><option>Ms.</option>
+        </select>
+        <input id="firstName" autocomplete="off" placeholder="First Name *" class="col-span-1 border rounded-xl px-3 py-3 text-sm">
+        <input id="surname" autocomplete="off" placeholder="Surname *" class="col-span-1 border rounded-xl px-3 py-3 text-sm">
+        <input id="otherNames" autocomplete="off" placeholder="Other" class="col-span-1 border rounded-xl px-3 py-3 text-sm">
+      </div>
+
+      <input id="companyName" autocomplete="off" placeholder="Organization Name *" class="w-full border rounded-xl px-4 py-3 mb-2">
+      <input id="adminName" autocomplete="off" placeholder="Administrator Name (optional)" class="w-full border rounded-xl px-4 py-3 mb-2">
+      <input id="position" autocomplete="off" placeholder="Position" class="w-full border rounded-xl px-4 py-3 mb-2">
+
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <input id="mobile1" autocomplete="off" placeholder="Mobile 1 *" class="border rounded-xl px-3 py-3 text-sm">
+        <input id="mobile2" autocomplete="off" placeholder="Mobile 2 (optional)" class="border rounded-xl px-3 py-3 text-sm">
+      </div>
+
+      <input id="email" type="email" autocomplete="off" placeholder="Email *" class="w-full border rounded-xl px-4 py-3 mb-2">
+      <div class="relative mb-2">
+        <input id="password" type="password" autocomplete="new-password" placeholder="Choose a password (min 6 characters) *" class="w-full border rounded-xl px-4 py-3 pr-10">
+        <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+      </div>
+
+      <input id="country" autocomplete="off" placeholder="Country" class="w-full border rounded-xl px-4 py-3 mb-2">
+      <input id="address" autocomplete="off" placeholder="Address" class="w-full border rounded-xl px-4 py-3 mb-2">
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <input id="city" autocomplete="off" placeholder="City" class="border rounded-xl px-3 py-3 text-sm">
+        <input id="state" autocomplete="off" placeholder="State" class="border rounded-xl px-3 py-3 text-sm">
+      </div>
+
+      <label class="flex items-start gap-2 text-xs text-gray-600 mb-4">
+        <input id="tcAccept" type="checkbox" class="mt-0.5">
+        <span>I accept all our terms and conditions *</span>
+      </label>
+
+      ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+      <button id="signupBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">Create Company Account</button>
+    </div>`;
+
+  document.getElementById('signupBtn').onclick = signup;
+}
+
+async function signup() {
+  errorMsg = '';
+  if (!onboardingCode) { errorMsg = 'Missing invite code.'; render(); return; }
+
+  const title = document.getElementById('title').value;
+  const firstName = document.getElementById('firstName').value.trim();
+  const surname = document.getElementById('surname').value.trim();
+  const otherNames = document.getElementById('otherNames').value.trim();
+  const companyName = document.getElementById('companyName').value.trim();
+  const adminName = document.getElementById('adminName').value.trim();
+  const position = document.getElementById('position').value.trim();
+  const mobile1 = document.getElementById('mobile1').value.trim();
+  const mobile2 = document.getElementById('mobile2').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const country = document.getElementById('country').value.trim();
+  const address = document.getElementById('address').value.trim();
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim();
+  const tcAccept = document.getElementById('tcAccept').checked;
+
+  if (!firstName || !surname || !companyName || !mobile1 || !email || !password) {
+    errorMsg = 'Please fill in all required fields (marked *).'; render(); return;
+  }
+  if (password.length < 6) { errorMsg = 'Password must be at least 6 characters.'; render(); return; }
+  if (!tcAccept) { errorMsg = 'You must accept the terms and conditions to continue.'; render(); return; }
+
+  const signUpResult = await sb.auth.signUp({ email, password });
+  if (signUpResult.error) { errorMsg = signUpResult.error.message; render(); return; }
+  if (!signUpResult.data.session) {
+    errorMsg = 'Account created — please confirm your email, then log in to finish setup.';
+    render(); return;
+  }
+
+  const { data, error } = await sb.rpc('create_company_and_owner', {
+    p_company_name: companyName, p_invite_code: onboardingCode,
+    p_title: title || null, p_first_name: firstName, p_surname: surname, p_other_names: otherNames || null,
+    p_admin_name: adminName || null, p_position: position || null,
+    p_mobile1: mobile1, p_mobile2: mobile2 || null,
+    p_country: country || null, p_address: address || null, p_city: city || null, p_state: state || null,
+    p_terms_accepted: tcAccept
+  });
+
+  if (error) { errorMsg = error.message; render(); return; }
+
+  sessionStorage.removeItem('metosync_onboarding_code');
+  sessionStorage.setItem('metosync_new_company', JSON.stringify(data));
+  window.location.href = 'admin.html';
+}
+
+render();
+</script>
+</body>
+</html>
