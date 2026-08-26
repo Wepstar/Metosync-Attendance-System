@@ -301,13 +301,13 @@ async function renderStaff(el) {
         </div>
       </div>
       ${errorMsg ? `<p class="text-red-600 text-sm mt-2">${errorMsg}</p>` : ''}
-      <button id="addStaffBtn" class="mt-3 bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Staff</button>
+      <button id="addStaffBtn" type="button" class="mt-3 bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Staff</button>
     </div>
 
     <div class="bg-white rounded-2xl p-4 shadow-sm overflow-x-auto">
       <div class="flex justify-between items-center mb-2">
         <h2 class="font-medium">Staff Catalog</h2>
-        <button id="deleteStaffBtn" class="hidden bg-red-600 text-white rounded-xl px-3 py-1.5 text-xs font-medium">Delete Selected</button>
+        <button id="deleteStaffBtn" type="button" class="hidden bg-red-600 text-white rounded-xl px-3 py-1.5 text-xs font-medium">Delete Selected</button>
       </div>
       <table class="w-full text-sm text-left">
         <thead><tr class="border-b text-gray-500">
@@ -324,6 +324,7 @@ async function renderStaff(el) {
   };
 
   document.getElementById('f_paytype').onchange = (e) => {
+    e.preventDefault();
     staffPayType = e.target.value;
     const dailyBlock = document.getElementById('f_weekday').closest('.grid');
     const fixedBlock = document.getElementById('f_salary').closest('.grid');
