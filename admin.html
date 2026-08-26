@@ -16,6 +16,7 @@ let myProfile = null;
 let myCompany = null;
 let errorMsg = '';
 let activeTab = 'staff';
+let sites = [];
 
 function app() { return document.getElementById('app'); }
 
@@ -101,12 +102,106 @@ function renderDashboard() {
     <div class="flex flex-wrap gap-1 mb-4 bg-white rounded-xl p-1 shadow-sm">
       ${tabs.map(t => `<button class="tabBtn px-3 py-2 rounded-lg text-sm font-medium ${activeTab === t.id ? 'bg-[#0d2a4d] text-white' : 'text-gray-600'}" data-tab="${t.id}">${t.label}</button>`).join('')}
     </div>
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-      <p class="text-gray-400 text-center">— ${tabs.find(t => t.id === activeTab).label} content comes next —</p>
-    </div>`;
+    <div id="tabContent"><p class="text-gray-400 text-center mt-10">Loading…</p></div>`;
+
   document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; render(); };
   document.querySelectorAll('.tabBtn').forEach(btn => {
-    btn.onclick = () => { activeTab = btn.dataset.tab; render(); };
+    btn.onclick = () => { activeTab = btn.dataset.tab; renderTabContent(); };
+  });
+  renderTabContent();
+}
+
+async function renderTabContent() {
+  const el = document.getElementById('tabContent');
+  document.querySelectorAll('.tabBtn').forEach(btn => {
+    btn.className = `tabBtn px-3 py-2 rounded-lg text-sm font-medium ${btn.dataset.tab === activeTab ? 'bg-[#0d2a4d] text-white' : 'text-gray-600'}`;
+  });
+
+  if (activeTab === 'sites') return renderSites(el);
+
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl p-6 shadow-sm">
+      <p class="text-gray-400 text-center">— content comes next —</p>
+    </div>`;
+}
+
+async function renderSites(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading sites…</p>`;
+  const { data, error } = await sb.from('sites').select('*').order('country').order('created_at', { ascending: false });
+  if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
+  sites = data;
+
+  // Group sites by country for display
+  const byCountry = {};
+  sites.forEach(s => {
+    const key = s.country || 'No country set';
+    if (!byCountry[key]) byCountry[key] = [];
+    byCountry[key].push(s);
+  });
+
+  const groupsHtml = Object.keys(byCountry).sort().map(country => `
+    <div class="mb-4">
+      <h3 class="text-sm font-bold text-[#0d2a4d] mb-1">${country}</h3>
+      <div class="border rounded-xl divide-y">
+        ${byCountry[country].map(s => `
+          <div class="flex justify-between items-center px-3 py-2">
+            <div>
+              <p class="text-sm font-medium">${s.name}</p>
+              ${s.address ? `<p class="text-xs text-gray-500">${s.address}</p>` : ''}
+            </div>
+            <button class="deleteSiteBtn text-red-600 text-xs" data-id="${s.id}">Delete</button>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4">
+      <h2 class="font-medium mb-3">Add Site</h2>
+
+      <label class="text-xs font-medium text-gray-500">Step 1. Country</label>
+      <input id="siteCountry" autocomplete="off" placeholder="e.g. Ghana" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+
+      <label class="text-xs font-medium text-gray-500">Step 2. Site Name</label>
+      <input id="siteName" autocomplete="off" placeholder="e.g. Nima" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+
+      <label class="text-xs font-medium text-gray-500">Address (optional)</label>
+      <input id="siteAddress" autocomplete="off" placeholder="Address" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+
+      ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
+      <button id="addSiteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Site</button>
+    </div>
+
+    <div class="bg-white rounded-2xl p-4 shadow-sm">
+      <h2 class="font-medium mb-3">Sites by Country</h2>
+      ${groupsHtml || '<p class="text-gray-400 text-sm">No sites yet.</p>'}
+    </div>`;
+
+  document.getElementById('addSiteBtn').onclick = async () => {
+    errorMsg = '';
+    const country = document.getElementById('siteCountry').value.trim();
+    const name = document.getElementById('siteName').value.trim();
+    const address = document.getElementById('siteAddress').value.trim();
+    if (!country) { errorMsg = 'Country is required (Step 1).'; renderSites(el); return; }
+    if (!name) { errorMsg = 'Site name is required (Step 2).'; renderSites(el); return; }
+
+    const { error } = await sb.from('sites').insert({
+      company_id: myProfile.company_id, name, country, address: address || null
+    });
+    if (error) { errorMsg = error.message; renderSites(el); return; }
+    renderSites(el);
+  };
+
+  document.querySelectorAll('.deleteSiteBtn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Delete this site? This cannot be undone.')) return;
+      const { error } = await sb.from('sites').delete().eq('id', btn.dataset.id);
+      if (error) { errorMsg = error.message; }
+      renderSites(el);
+    };
+  });
+
+  app().querySelectorAll('#siteCountry, #siteName, #siteAddress').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addSiteBtn').click(); });
   });
 }
 
