@@ -234,6 +234,18 @@ async function renderSites(el) {
 
 // ===== STAFF =====
 
+function showFormError(msg) {
+  errorMsg = msg;
+  let errEl = document.getElementById('addStaffError');
+  if (!errEl) {
+    errEl = document.createElement('p');
+    errEl.id = 'addStaffError';
+    errEl.className = 'text-red-600 text-sm mt-2';
+    document.getElementById('addStaffBtn').insertAdjacentElement('beforebegin', errEl);
+  }
+  errEl.textContent = msg;
+}
+
 async function renderStaff(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
   const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
@@ -338,11 +350,11 @@ async function renderStaff(el) {
     const currencySalary = document.getElementById('f_currency_salary').value;
 
     if (!name || !mobile || pin.length !== 4 || !siteId) {
-      errorMsg = 'Fill in Full Name, Mobile, a 4-digit PIN, and choose a site.'; renderStaff(el); return;
+      showFormError('Fill in Full Name, Mobile, a 4-digit PIN, and choose a site.'); return;
     }
 
     const { data: hashed, error: hashErr } = await sb.rpc('hash_pin', { p_pin: pin });
-    if (hashErr) { errorMsg = hashErr.message; renderStaff(el); return; }
+    if (hashErr) { showFormError(hashErr.message); return; }
 
     const { error } = await sb.from('staff').insert({
       company_id: myProfile.company_id, site_id: siteId, full_name: name, phone: mobile,
@@ -353,7 +365,7 @@ async function renderStaff(el) {
       monthly_salary: payType === 'fixed' ? (salary || 0) : null,
       currency: payType === 'fixed' ? currencySalary : currencyRate
     });
-    if (error) { errorMsg = error.message; renderStaff(el); return; }
+    if (error) { showFormError(error.message); return; }
     renderStaff(el);
   };
 
