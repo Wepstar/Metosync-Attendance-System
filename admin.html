@@ -66,6 +66,9 @@ function renderLogin() {
     await loadProfile();
     render();
   };
+  app().querySelectorAll('input').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
+  });
 }
 
 function renderNoCompany() {
@@ -83,6 +86,9 @@ function renderDashboard() {
     { id: 'sites', label: 'Sites' },
     { id: 'attendance', label: 'Attendance' },
     { id: 'payroll', label: 'Payroll' },
+    { id: 'payroll-history', label: 'Payroll History' },
+    { id: 'settings', label: 'Settings' },
+    { id: 'contact', label: 'Contact & Support' },
   ];
   app().innerHTML = `
     <div class="flex justify-between items-center mb-4 pt-4">
@@ -92,8 +98,8 @@ function renderDashboard() {
       </div>
       <button id="logoutBtn" class="text-sm text-blue-600">Log out</button>
     </div>
-    <div class="flex gap-1 mb-4 bg-white rounded-xl p-1 shadow-sm">
-      ${tabs.map(t => `<button class="tabBtn flex-1 py-2 rounded-lg text-sm font-medium ${activeTab === t.id ? 'bg-[#0d2a4d] text-white' : 'text-gray-600'}" data-tab="${t.id}">${t.label}</button>`).join('')}
+    <div class="flex flex-wrap gap-1 mb-4 bg-white rounded-xl p-1 shadow-sm">
+      ${tabs.map(t => `<button class="tabBtn px-3 py-2 rounded-lg text-sm font-medium ${activeTab === t.id ? 'bg-[#0d2a4d] text-white' : 'text-gray-600'}" data-tab="${t.id}">${t.label}</button>`).join('')}
     </div>
     <div class="bg-white rounded-2xl p-6 shadow-sm">
       <p class="text-gray-400 text-center">— ${tabs.find(t => t.id === activeTab).label} content comes next —</p>
