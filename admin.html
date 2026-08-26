@@ -17,6 +17,12 @@ let myCompany = null;
 let errorMsg = '';
 let activeTab = 'staff';
 let sites = [];
+let staffList = [];
+let capturedLat = null;
+let capturedLng = null;
+let gpsStatus = '';
+let staffPayType = 'daily'; // 'daily' | 'fixed'
+let staffCountry = '';
 
 function app() { return document.getElementById('app'); }
 
@@ -118,6 +124,7 @@ async function renderTabContent() {
   });
 
   if (activeTab === 'sites') return renderSites(el);
+  if (activeTab === 'staff') return renderStaff(el);
 
   el.innerHTML = `
     <div class="bg-white rounded-2xl p-6 shadow-sm">
@@ -125,13 +132,14 @@ async function renderTabContent() {
     </div>`;
 }
 
+// ===== SITES =====
+
 async function renderSites(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading sites…</p>`;
   const { data, error } = await sb.from('sites').select('*').order('country').order('created_at', { ascending: false });
   if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
   sites = data;
 
-  // Group sites by country for display
   const byCountry = {};
   sites.forEach(s => {
     const key = s.country || 'No country set';
@@ -148,6 +156,7 @@ async function renderSites(el) {
             <div>
               <p class="text-sm font-medium">${s.name}</p>
               ${s.address ? `<p class="text-xs text-gray-500">${s.address}</p>` : ''}
+              ${s.latitude != null ? `<a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" class="text-xs text-blue-600">📍 View on Map</a>` : `<p class="text-xs text-gray-400">No GPS captured</p>`}
             </div>
             <button class="deleteSiteBtn text-red-600 text-xs" data-id="${s.id}">Delete</button>
           </div>`).join('')}
@@ -159,13 +168,20 @@ async function renderSites(el) {
       <h2 class="font-medium mb-3">Add Site</h2>
 
       <label class="text-xs font-medium text-gray-500">Step 1. Country</label>
-      <input id="siteCountry" autocomplete="off" placeholder="e.g. Ghana" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+      <input id="siteCountry" list="countryDatalist" autocomplete="off" placeholder="Type or select a country" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+      <datalist id="countryDatalist">${COUNTRIES.map(c => `<option value="${c}">`).join('')}</datalist>
 
       <label class="text-xs font-medium text-gray-500">Step 2. Site Name</label>
       <input id="siteName" autocomplete="off" placeholder="e.g. Nima" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
 
       <label class="text-xs font-medium text-gray-500">Address (optional)</label>
       <input id="siteAddress" autocomplete="off" placeholder="Address" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+
+      <label class="text-xs font-medium text-gray-500">GPS Location (optional, for check-in verification)</label>
+      <div class="flex items-center gap-2 mb-3">
+        <button id="captureGpsBtn" type="button" class="bg-gray-700 text-white rounded-lg px-3 py-2 text-sm font-medium">📍 Capture GPS Location</button>
+        ${gpsStatus ? `<span class="text-xs ${capturedLat ? 'text-green-700' : 'text-red-600'}">${gpsStatus}</span>` : ''}
+      </div>
 
       ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
       <button id="addSiteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Site</button>
@@ -176,6 +192,16 @@ async function renderSites(el) {
       ${groupsHtml || '<p class="text-gray-400 text-sm">No sites yet.</p>'}
     </div>`;
 
+  document.getElementById('captureGpsBtn').onclick = () => {
+    if (!navigator.geolocation) { gpsStatus = '❌ GPS not supported on this device/browser.'; renderSites(el); return; }
+    gpsStatus = 'Capturing…'; renderSites(el);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { capturedLat = pos.coords.latitude; capturedLng = pos.coords.longitude; gpsStatus = `✅ Captured: ${capturedLat.toFixed(5)}, ${capturedLng.toFixed(5)}`; renderSites(el); },
+      (err) => { capturedLat = null; capturedLng = null; gpsStatus = '❌ Could not get location — ' + err.message; renderSites(el); },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   document.getElementById('addSiteBtn').onclick = async () => {
     errorMsg = '';
     const country = document.getElementById('siteCountry').value.trim();
@@ -183,11 +209,12 @@ async function renderSites(el) {
     const address = document.getElementById('siteAddress').value.trim();
     if (!country) { errorMsg = 'Country is required (Step 1).'; renderSites(el); return; }
     if (!name) { errorMsg = 'Site name is required (Step 2).'; renderSites(el); return; }
-
     const { error } = await sb.from('sites').insert({
-      company_id: myProfile.company_id, name, country, address: address || null
+      company_id: myProfile.company_id, name, country, address: address || null,
+      latitude: capturedLat, longitude: capturedLng
     });
     if (error) { errorMsg = error.message; renderSites(el); return; }
+    capturedLat = null; capturedLng = null; gpsStatus = '';
     renderSites(el);
   };
 
@@ -202,6 +229,147 @@ async function renderSites(el) {
 
   app().querySelectorAll('#siteCountry, #siteName, #siteAddress').forEach(inp => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addSiteBtn').click(); });
+  });
+}
+
+// ===== STAFF =====
+
+async function renderStaff(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
+  const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
+    sb.from('sites').select('*').order('country'),
+    sb.from('staff').select('*, sites(name, country)').order('created_at', { ascending: false })
+  ]);
+  if (sitesErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${sitesErr.message}</p>`; return; }
+  if (staffErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${staffErr.message}</p>`; return; }
+  sites = sitesData;
+  staffList = staffData;
+
+  const countries = [...new Set(sites.map(s => s.country).filter(Boolean))].sort();
+  if (!staffCountry && countries.length) staffCountry = countries[0];
+  const countryOptions = countries.map(c => `<option value="${c}" ${c === staffCountry ? 'selected' : ''}>${c}</option>`).join('');
+  const filteredSites = sites.filter(s => s.country === staffCountry);
+  const siteOptions = filteredSites.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  const currencyOptions = CURRENCIES.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  const rows = staffList.map(s => `
+    <tr class="border-b">
+      <td class="py-2 px-3"><input type="checkbox" class="staffSelectCheck" data-id="${s.id}"></td>
+      <td class="py-2 px-3">${s.full_name}</td>
+      <td class="py-2 px-3">${s.phone}</td>
+      <td class="py-2 px-3">${s.sites ? s.sites.name : ''}</td>
+      <td class="py-2 px-3">${s.pay_type === 'monthly' ? `${s.currency} ${Number(s.monthly_salary || 0).toFixed(2)}/mo` : `${s.currency} ${Number(s.weekday_rate || 0).toFixed(2)} wkday / ${Number(s.weekend_rate || 0).toFixed(2)} wkend`}</td>
+      <td class="py-2 px-3">${s.active ? '✅' : '❌'}</td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4">
+      <h2 class="font-medium mb-3">Add Staff</h2>
+      <div class="grid grid-cols-2 gap-2">
+        <input id="f_name" autocomplete="off" placeholder="Full Name *" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="f_mobile" autocomplete="off" placeholder="Mobile *" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="f_department" autocomplete="off" placeholder="Department" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="f_role" autocomplete="off" placeholder="Role" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="f_staffcode" autocomplete="off" placeholder="Staff Code (optional)" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="f_pin" autocomplete="off" inputmode="numeric" maxlength="4" placeholder="4-digit PIN *" class="border rounded-lg px-3 py-2 text-sm">
+        <select id="f_country" class="border rounded-lg px-3 py-2 text-sm">${countryOptions || '<option value="">Add a site first</option>'}</select>
+        <select id="f_site" class="border rounded-lg px-3 py-2 text-sm">${siteOptions || '<option value="">No sites in this country</option>'}</select>
+        <select id="f_paytype" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+          <option value="daily" ${staffPayType === 'daily' ? 'selected' : ''}>Daily rate (weekday/weekend)</option>
+          <option value="fixed" ${staffPayType === 'fixed' ? 'selected' : ''}>Fixed Salary</option>
+        </select>
+        <div class="col-span-2 grid grid-cols-3 gap-2 ${staffPayType === 'fixed' ? 'opacity-40 pointer-events-none' : ''}">
+          <input id="f_weekday" type="number" step="0.01" placeholder="Weekday rate" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="f_weekend" type="number" step="0.01" placeholder="Weekend rate" class="border rounded-lg px-3 py-2 text-sm">
+          <select id="f_currency_rate" class="border rounded-lg px-3 py-2 text-sm">${currencyOptions}</select>
+        </div>
+        <div class="col-span-2 grid grid-cols-2 gap-2 ${staffPayType === 'daily' ? 'opacity-40 pointer-events-none' : ''}">
+          <input id="f_salary" type="number" step="0.01" placeholder="Fixed Salary" class="border rounded-lg px-3 py-2 text-sm">
+          <select id="f_currency_salary" class="border rounded-lg px-3 py-2 text-sm">${currencyOptions}</select>
+        </div>
+      </div>
+      ${errorMsg ? `<p class="text-red-600 text-sm mt-2">${errorMsg}</p>` : ''}
+      <button id="addStaffBtn" class="mt-3 bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Staff</button>
+    </div>
+
+    <div class="bg-white rounded-2xl p-4 shadow-sm overflow-x-auto">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-medium">Staff Catalog</h2>
+        <button id="deleteStaffBtn" class="hidden bg-red-600 text-white rounded-xl px-3 py-1.5 text-xs font-medium">Delete Selected</button>
+      </div>
+      <table class="w-full text-sm text-left">
+        <thead><tr class="border-b text-gray-500">
+          <th class="py-2 px-3"></th><th class="py-2 px-3">Name</th><th class="py-2 px-3">Mobile</th><th class="py-2 px-3">Site</th><th class="py-2 px-3">Fixed/Rate</th><th class="py-2 px-3">Active</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td class="py-4 px-3 text-gray-400" colspan="6">No staff yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+
+  document.getElementById('f_country').onchange = (e) => {
+    staffCountry = e.target.value;
+    const newSites = sites.filter(s => s.country === staffCountry);
+    document.getElementById('f_site').innerHTML = newSites.map(s => `<option value="${s.id}">${s.name}</option>`).join('') || '<option value="">No sites in this country</option>';
+  };
+
+  document.getElementById('f_paytype').onchange = (e) => {
+    staffPayType = e.target.value;
+    renderStaff(el);
+  };
+
+  document.getElementById('addStaffBtn').onclick = async () => {
+    errorMsg = '';
+    const name = document.getElementById('f_name').value.trim();
+    const mobile = document.getElementById('f_mobile').value.trim();
+    const department = document.getElementById('f_department').value.trim();
+    const role = document.getElementById('f_role').value.trim();
+    const staffCode = document.getElementById('f_staffcode').value.trim();
+    const pin = document.getElementById('f_pin').value.trim();
+    const siteId = document.getElementById('f_site').value;
+    const payType = document.getElementById('f_paytype').value;
+    const weekday = document.getElementById('f_weekday').value;
+    const weekend = document.getElementById('f_weekend').value;
+    const currencyRate = document.getElementById('f_currency_rate').value;
+    const salary = document.getElementById('f_salary').value;
+    const currencySalary = document.getElementById('f_currency_salary').value;
+
+    if (!name || !mobile || pin.length !== 4 || !siteId) {
+      errorMsg = 'Fill in Full Name, Mobile, a 4-digit PIN, and choose a site.'; renderStaff(el); return;
+    }
+
+    const { data: hashed, error: hashErr } = await sb.rpc('hash_pin', { p_pin: pin });
+    if (hashErr) { errorMsg = hashErr.message; renderStaff(el); return; }
+
+    const { error } = await sb.from('staff').insert({
+      company_id: myProfile.company_id, site_id: siteId, full_name: name, phone: mobile,
+      department: department || null, role: role || null, staff_code: staffCode || null,
+      pin_hash: hashed, pay_type: payType === 'fixed' ? 'monthly' : 'daily',
+      weekday_rate: payType === 'daily' ? (weekday || 0) : null,
+      weekend_rate: payType === 'daily' ? (weekend || 0) : null,
+      monthly_salary: payType === 'fixed' ? (salary || 0) : null,
+      currency: payType === 'fixed' ? currencySalary : currencyRate
+    });
+    if (error) { errorMsg = error.message; renderStaff(el); return; }
+    renderStaff(el);
+  };
+
+  const deleteBtn = document.getElementById('deleteStaffBtn');
+  document.querySelectorAll('.staffSelectCheck').forEach(cb => {
+    cb.onchange = () => {
+      const anyChecked = document.querySelectorAll('.staffSelectCheck:checked').length > 0;
+      deleteBtn.classList.toggle('hidden', !anyChecked);
+    };
+  });
+  deleteBtn.onclick = async () => {
+    const ids = Array.from(document.querySelectorAll('.staffSelectCheck:checked')).map(cb => cb.dataset.id);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} staff record(s)? This cannot be undone.`)) return;
+    const { error } = await sb.from('staff').delete().in('id', ids);
+    if (error) { errorMsg = error.message; }
+    renderStaff(el);
+  };
+
+  app().querySelectorAll('#f_name, #f_mobile, #f_department, #f_role, #f_staffcode, #f_pin, #f_weekday, #f_weekend, #f_salary').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addStaffBtn').click(); });
   });
 }
 
