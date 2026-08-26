@@ -263,8 +263,8 @@ function statusBadge(status) {
 function customFieldsHtml() {
   return customFields.map((f, i) => `
     <div class="flex gap-2 items-center mb-2">
-      <input class="cfLabel border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="e.g. Start Date" value="${f.label}">
-      <input class="cfValue border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="e.g. 23rd August, 2026" value="${f.value}">
+      <input class="cfLabel border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="" value="${f.label}">
+      <input class="cfValue border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="" value="${f.value}">
       <button type="button" class="cfRemoveBtn text-red-600 text-sm px-1" data-i="${i}">✕</button>
     </div>`).join('');
 }
