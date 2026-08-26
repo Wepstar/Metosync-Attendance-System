@@ -313,7 +313,12 @@ async function renderStaff(el) {
 
   document.getElementById('f_paytype').onchange = (e) => {
     staffPayType = e.target.value;
-    renderStaff(el);
+    const dailyBlock = document.getElementById('f_weekday').closest('.grid');
+    const fixedBlock = document.getElementById('f_salary').closest('.grid');
+    dailyBlock.classList.toggle('opacity-40', staffPayType === 'fixed');
+    dailyBlock.classList.toggle('pointer-events-none', staffPayType === 'fixed');
+    fixedBlock.classList.toggle('opacity-40', staffPayType === 'daily');
+    fixedBlock.classList.toggle('pointer-events-none', staffPayType === 'daily');
   };
 
   document.getElementById('addStaffBtn').onclick = async () => {
