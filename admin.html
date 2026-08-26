@@ -23,6 +23,8 @@ let capturedLng = null;
 let gpsStatus = '';
 let staffPayType = 'daily'; // 'daily' | 'fixed'
 let staffCountry = '';
+let staffTypeSelected = 'permanent'; // 'permanent' | 'casual'
+let casualPinEnabled = false;
 
 function app() { return document.getElementById('app'); }
 
@@ -184,7 +186,7 @@ async function renderSites(el) {
       </div>
 
       ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
-      <button id="addSiteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Site</button>
+      <button id="addSiteBtn" type="button" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Add Site</button>
     </div>
 
     <div class="bg-white rounded-2xl p-4 shadow-sm">
@@ -246,6 +248,17 @@ function showFormError(msg) {
   errEl.textContent = msg;
 }
 
+function statusBadge(status) {
+  const map = {
+    active: 'bg-green-100 text-green-800',
+    on_leave: 'bg-yellow-100 text-yellow-800',
+    inactive: 'bg-red-100 text-red-800',
+    pending: 'bg-blue-100 text-blue-800',
+  };
+  const labelMap = { active: 'Active', on_leave: 'On Leave', inactive: 'Inactive', pending: 'Pending' };
+  return `<span class="px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-800'}">${labelMap[status] || status}</span>`;
+}
+
 async function renderStaff(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
   const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
@@ -263,40 +276,59 @@ async function renderStaff(el) {
   const filteredSites = sites.filter(s => s.country === staffCountry);
   const siteOptions = filteredSites.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
   const currencyOptions = CURRENCIES.map(c => `<option value="${c}">${c}</option>`).join('');
+  const isCasual = staffTypeSelected === 'casual';
+  const showPinField = !isCasual || casualPinEnabled;
 
   const rows = staffList.map(s => `
     <tr class="border-b">
       <td class="py-2 px-3"><input type="checkbox" class="staffSelectCheck" data-id="${s.id}"></td>
-      <td class="py-2 px-3">${s.full_name}</td>
+      <td class="py-2 px-3">${s.full_name} ${s.staff_type === 'casual' ? '<span class="text-xs text-gray-400">(Casual)</span>' : ''}</td>
       <td class="py-2 px-3">${s.phone}</td>
       <td class="py-2 px-3">${s.sites ? s.sites.name : ''}</td>
       <td class="py-2 px-3">${s.pay_type === 'monthly' ? `${s.currency} ${Number(s.monthly_salary || 0).toFixed(2)}/mo` : `${s.currency} ${Number(s.weekday_rate || 0).toFixed(2)} wkday / ${Number(s.weekend_rate || 0).toFixed(2)} wkend`}</td>
-      <td class="py-2 px-3">${s.active ? '✅' : '❌'}</td>
+      <td class="py-2 px-3">${statusBadge(s.status)}</td>
     </tr>`).join('');
 
   el.innerHTML = `
     <div class="bg-white rounded-2xl p-4 shadow-sm mb-4">
       <h2 class="font-medium mb-3">Add Staff</h2>
+
+      <label class="text-xs font-medium text-gray-500">Staff Type</label>
+      <select id="f_stafftype" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+        <option value="permanent" ${staffTypeSelected === 'permanent' ? 'selected' : ''}>Permanent</option>
+        <option value="casual" ${staffTypeSelected === 'casual' ? 'selected' : ''}>Laborer / Casual Worker</option>
+      </select>
+
       <div class="grid grid-cols-2 gap-2">
         <input id="f_name" autocomplete="off" placeholder="Full Name *" class="border rounded-lg px-3 py-2 text-sm">
         <input id="f_mobile" autocomplete="off" placeholder="Mobile *" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="f_department" autocomplete="off" placeholder="Department" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="f_role" autocomplete="off" placeholder="Role" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="f_staffcode" autocomplete="off" placeholder="Staff Code (optional)" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="f_pin" autocomplete="off" inputmode="numeric" maxlength="4" placeholder="4-digit PIN *" class="border rounded-lg px-3 py-2 text-sm">
+
+        <input id="f_department" autocomplete="off" placeholder="Department" class="border rounded-lg px-3 py-2 text-sm ${isCasual ? 'hidden' : ''}">
+        <input id="f_role" autocomplete="off" placeholder="Role" class="border rounded-lg px-3 py-2 text-sm ${isCasual ? 'hidden' : ''}">
+        <input id="f_staffcode" autocomplete="off" placeholder="Staff Code (optional)" class="border rounded-lg px-3 py-2 text-sm ${isCasual ? 'hidden' : ''}">
+
+        <label class="col-span-2 flex items-center gap-2 text-sm ${isCasual ? '' : 'hidden'}" id="f_casualPinLabel">
+          <input type="checkbox" id="f_casualPinEnable" ${casualPinEnabled ? 'checked' : ''}>
+          Enable PIN check-in for this worker (e.g. long-term casual staff)
+        </label>
+
+        <input id="f_pin" autocomplete="off" inputmode="numeric" maxlength="4" placeholder="4-digit PIN *" class="border rounded-lg px-3 py-2 text-sm ${showPinField ? '' : 'hidden'}">
+
         <select id="f_country" class="border rounded-lg px-3 py-2 text-sm">${countryOptions || '<option value="">Add a site first</option>'}</select>
         <select id="f_site" class="border rounded-lg px-3 py-2 text-sm">${siteOptions || '<option value="">No sites in this country</option>'}</select>
-        <select id="f_paytype" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+
+        <select id="f_paytype" class="border rounded-lg px-3 py-2 text-sm col-span-2 ${isCasual ? 'hidden' : ''}">
           <option value="daily" ${staffPayType === 'daily' ? 'selected' : ''}>Daily rate (weekday/weekend)</option>
           <option value="fixed" ${staffPayType === 'fixed' ? 'selected' : ''}>Fixed Salary</option>
         </select>
-        <div class="col-span-2 grid grid-cols-3 gap-2 ${staffPayType === 'fixed' ? 'opacity-40 pointer-events-none' : ''}">
+
+        <div class="col-span-2 grid grid-cols-3 gap-2 ${(isCasual || staffPayType === 'fixed') ? 'hidden' : ''}">
           <input id="f_weekday" type="number" step="0.01" placeholder="Weekday rate" class="border rounded-lg px-3 py-2 text-sm">
           <input id="f_weekend" type="number" step="0.01" placeholder="Weekend rate" class="border rounded-lg px-3 py-2 text-sm">
           <select id="f_currency_rate" class="border rounded-lg px-3 py-2 text-sm">${currencyOptions}</select>
         </div>
-        <div class="col-span-2 grid grid-cols-2 gap-2 ${staffPayType === 'daily' ? 'opacity-40 pointer-events-none' : ''}">
-          <input id="f_salary" type="number" step="0.01" placeholder="Fixed Salary" class="border rounded-lg px-3 py-2 text-sm">
+        <div class="col-span-2 grid grid-cols-2 gap-2 ${(!isCasual && staffPayType === 'daily') ? 'hidden' : ''}">
+          <input id="f_salary" type="number" step="0.01" placeholder="${isCasual ? 'Fixed Pay *' : 'Fixed Salary'}" class="border rounded-lg px-3 py-2 text-sm">
           <select id="f_currency_salary" class="border rounded-lg px-3 py-2 text-sm">${currencyOptions}</select>
         </div>
       </div>
@@ -311,11 +343,26 @@ async function renderStaff(el) {
       </div>
       <table class="w-full text-sm text-left">
         <thead><tr class="border-b text-gray-500">
-          <th class="py-2 px-3"></th><th class="py-2 px-3">Name</th><th class="py-2 px-3">Mobile</th><th class="py-2 px-3">Site</th><th class="py-2 px-3">Fixed/Rate</th><th class="py-2 px-3">Active</th>
+          <th class="py-2 px-3"></th><th class="py-2 px-3">Name</th><th class="py-2 px-3">Mobile</th><th class="py-2 px-3">Site</th><th class="py-2 px-3">Fixed/Rate</th><th class="py-2 px-3">Status</th>
         </tr></thead>
         <tbody>${rows || '<tr><td class="py-4 px-3 text-gray-400" colspan="6">No staff yet.</td></tr>'}</tbody>
       </table>
     </div>`;
+
+  document.getElementById('f_stafftype').onchange = (e) => {
+    staffTypeSelected = e.target.value;
+    if (staffTypeSelected === 'casual') staffPayType = 'fixed';
+    else casualPinEnabled = false;
+    renderStaff(el);
+  };
+
+  const casualPinCheck = document.getElementById('f_casualPinEnable');
+  if (casualPinCheck) {
+    casualPinCheck.onchange = (e) => {
+      casualPinEnabled = e.target.checked;
+      document.getElementById('f_pin').classList.toggle('hidden', !casualPinEnabled);
+    };
+  }
 
   document.getElementById('f_country').onchange = (e) => {
     staffCountry = e.target.value;
@@ -323,50 +370,77 @@ async function renderStaff(el) {
     document.getElementById('f_site').innerHTML = newSites.map(s => `<option value="${s.id}">${s.name}</option>`).join('') || '<option value="">No sites in this country</option>';
   };
 
-  document.getElementById('f_paytype').onchange = (e) => {
-    e.preventDefault();
-    staffPayType = e.target.value;
-    const dailyBlock = document.getElementById('f_weekday').closest('.grid');
-    const fixedBlock = document.getElementById('f_salary').closest('.grid');
-    dailyBlock.classList.toggle('opacity-40', staffPayType === 'fixed');
-    dailyBlock.classList.toggle('pointer-events-none', staffPayType === 'fixed');
-    fixedBlock.classList.toggle('opacity-40', staffPayType === 'daily');
-    fixedBlock.classList.toggle('pointer-events-none', staffPayType === 'daily');
-  };
+  const payTypeEl = document.getElementById('f_paytype');
+  if (payTypeEl) {
+    payTypeEl.onchange = (e) => {
+      staffPayType = e.target.value;
+      const dailyBlock = document.getElementById('f_weekday').closest('.grid');
+      const fixedBlock = document.getElementById('f_salary').closest('.grid');
+      dailyBlock.classList.toggle('hidden', staffPayType === 'fixed');
+      fixedBlock.classList.toggle('hidden', staffPayType === 'daily');
+    };
+  }
 
   document.getElementById('addStaffBtn').onclick = async () => {
     errorMsg = '';
     const name = document.getElementById('f_name').value.trim();
     const mobile = document.getElementById('f_mobile').value.trim();
-    const department = document.getElementById('f_department').value.trim();
-    const role = document.getElementById('f_role').value.trim();
-    const staffCode = document.getElementById('f_staffcode').value.trim();
-    const pin = document.getElementById('f_pin').value.trim();
     const siteId = document.getElementById('f_site').value;
-    const payType = document.getElementById('f_paytype').value;
-    const weekday = document.getElementById('f_weekday').value;
-    const weekend = document.getElementById('f_weekend').value;
-    const currencyRate = document.getElementById('f_currency_rate').value;
-    const salary = document.getElementById('f_salary').value;
-    const currencySalary = document.getElementById('f_currency_salary').value;
+    const staffType = document.getElementById('f_stafftype').value;
 
-    if (!name || !mobile || pin.length !== 4 || !siteId) {
-      showFormError('Fill in Full Name, Mobile, a 4-digit PIN, and choose a site.'); return;
+    if (!name || !mobile || !siteId) {
+      showFormError('Fill in Full Name, Mobile, and choose a site.'); return;
     }
 
-    const { data: hashed, error: hashErr } = await sb.rpc('hash_pin', { p_pin: pin });
-    if (hashErr) { showFormError(hashErr.message); return; }
+    let insertData = {
+      company_id: myProfile.company_id, site_id: siteId, full_name: name, phone: mobile, staff_type: staffType
+    };
 
-    const { error } = await sb.from('staff').insert({
-      company_id: myProfile.company_id, site_id: siteId, full_name: name, phone: mobile,
-      department: department || null, role: role || null, staff_code: staffCode || null,
-      pin_hash: hashed, pay_type: payType === 'fixed' ? 'monthly' : 'daily',
-      weekday_rate: payType === 'daily' ? (weekday || 0) : null,
-      weekend_rate: payType === 'daily' ? (weekend || 0) : null,
-      monthly_salary: payType === 'fixed' ? (salary || 0) : null,
-      currency: payType === 'fixed' ? currencySalary : currencyRate
-    });
+    if (staffType === 'casual') {
+      const salary = document.getElementById('f_salary').value;
+      const currencySalary = document.getElementById('f_currency_salary').value;
+      if (!salary) { showFormError('Fixed Pay is required for casual/laborer staff.'); return; }
+
+      let pinHash = null;
+      if (casualPinEnabled) {
+        const pin = document.getElementById('f_pin').value.trim();
+        if (pin.length !== 4) { showFormError('Enter a 4-digit PIN, or uncheck PIN check-in for this worker.'); return; }
+        const { data: hashed, error: hashErr } = await sb.rpc('hash_pin', { p_pin: pin });
+        if (hashErr) { showFormError(hashErr.message); return; }
+        pinHash = hashed;
+      }
+
+      insertData = { ...insertData, pay_type: 'monthly', monthly_salary: salary, currency: currencySalary, pin_hash: pinHash };
+    } else {
+      const department = document.getElementById('f_department').value.trim();
+      const role = document.getElementById('f_role').value.trim();
+      const staffCode = document.getElementById('f_staffcode').value.trim();
+      const pin = document.getElementById('f_pin').value.trim();
+      const payType = document.getElementById('f_paytype').value;
+      const weekday = document.getElementById('f_weekday').value;
+      const weekend = document.getElementById('f_weekend').value;
+      const currencyRate = document.getElementById('f_currency_rate').value;
+      const salary = document.getElementById('f_salary').value;
+      const currencySalary = document.getElementById('f_currency_salary').value;
+
+      if (pin.length !== 4) { showFormError('A 4-digit PIN is required for permanent staff.'); return; }
+
+      const { data: hashed, error: hashErr } = await sb.rpc('hash_pin', { p_pin: pin });
+      if (hashErr) { showFormError(hashErr.message); return; }
+
+      insertData = {
+        ...insertData, department: department || null, role: role || null, staff_code: staffCode || null,
+        pin_hash: hashed, pay_type: payType === 'fixed' ? 'monthly' : 'daily',
+        weekday_rate: payType === 'daily' ? (weekday || 0) : null,
+        weekend_rate: payType === 'daily' ? (weekend || 0) : null,
+        monthly_salary: payType === 'fixed' ? (salary || 0) : null,
+        currency: payType === 'fixed' ? currencySalary : currencyRate
+      };
+    }
+
+    const { error } = await sb.from('staff').insert(insertData);
     if (error) { showFormError(error.message); return; }
+    casualPinEnabled = false;
     renderStaff(el);
   };
 
