@@ -27,6 +27,8 @@ let staffCountry = '';
 let staffTypeSelected = 'permanent';
 let casualPinEnabled = false;
 let customFields = [];
+let attendanceDate = new Date().toISOString().slice(0, 10);
+let attendanceStatus = 'present';
 
 function app() { return document.getElementById('app'); }
 
@@ -133,6 +135,7 @@ async function renderTabContent() {
 
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
+  if (activeTab === 'attendance') return renderAttendance(el);
 
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
 }
@@ -513,6 +516,90 @@ async function renderStaff(el) {
   app().querySelectorAll('#f_name, #f_mobile, #f_department, #f_role, #f_staffcode, #f_pin, #f_weekday, #f_weekend, #f_salary').forEach(inp => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addStaffBtn').click(); });
   });
+}
+
+// ===== ATTENDANCE =====
+
+function attendanceStatusBadge(status) {
+  const map = { present: 'active', absent: 'inactive', on_leave: 'on_leave', sick: 'pending', holiday: 'pending' };
+  const labels = { present: 'Present', absent: 'Absent', on_leave: 'On Leave', sick: 'Sick', holiday: 'Holiday' };
+  return `<span class="mt-badge ${map[status] || 'pending'}">${labels[status] || status}</span>`;
+}
+
+async function renderAttendance(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading attendance…</p>`;
+  const [{ data: staffData, error: staffErr }, { data: attData, error: attErr }] = await Promise.all([
+    sb.from('staff').select('id, full_name, phone, sites(name)').order('full_name'),
+    sb.from('attendance').select('*, staff(full_name), sites(name)').eq('work_date', attendanceDate).order('created_at', { ascending: false })
+  ]);
+  if (staffErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${staffErr.message}</p>`; return; }
+  if (attErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${attErr.message}</p>`; return; }
+  staffList = staffData;
+
+  const staffOptions = staffList.map(s => `<option value="${s.id}">${s.full_name} — ${s.sites ? s.sites.name : 'no site'}</option>`).join('');
+
+  const rows = (attData || []).map(a => `
+    <tr>
+      <td>${a.staff ? a.staff.full_name : ''}</td>
+      <td>${a.sites ? a.sites.name : ''}</td>
+      <td>${attendanceStatusBadge(a.status)}</td>
+      <td>${a.check_in ? new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+      <td>${a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+      <td>${a.total_hours != null ? a.total_hours + ' hrs' : '—'}</td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mb-4 mt-fade-in">
+      <h2 class="font-medium mb-3">Set Status for a Day</h2>
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <select id="a_staff" class="border rounded-lg px-3 py-2 text-sm col-span-2">${staffOptions || '<option value="">No staff yet</option>'}</select>
+        <input id="a_date" type="date" value="${attendanceDate}" class="border rounded-lg px-3 py-2 text-sm">
+        <select id="a_status" class="border rounded-lg px-3 py-2 text-sm">
+          <option value="present" ${attendanceStatus === 'present' ? 'selected' : ''}>Present</option>
+          <option value="absent" ${attendanceStatus === 'absent' ? 'selected' : ''}>Absent</option>
+          <option value="on_leave" ${attendanceStatus === 'on_leave' ? 'selected' : ''}>On Leave</option>
+          <option value="sick" ${attendanceStatus === 'sick' ? 'selected' : ''}>Sick</option>
+          <option value="holiday" ${attendanceStatus === 'holiday' ? 'selected' : ''}>Holiday</option>
+        </select>
+        <input id="a_checkin" type="time" placeholder="Check-in (optional)" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="a_checkout" type="time" placeholder="Check-out (optional)" class="border rounded-lg px-3 py-2 text-sm">
+      </div>
+      ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
+      <button id="saveAttendanceBtn" type="button" class="mt-btn-primary">Save Status</button>
+    </div>
+
+    <div class="mt-card p-4 overflow-x-auto mt-fade-in">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-medium">Attendance for ${attendanceDate}</h2>
+      </div>
+      <table class="w-full mt-table">
+        <thead><tr><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th></tr></thead>
+        <tbody>${rows || '<tr><td class="text-gray-400 py-4" colspan="6">No attendance marked for this date yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+
+  document.getElementById('a_date').onchange = (e) => { attendanceDate = e.target.value; renderAttendance(el); };
+  document.getElementById('a_status').onchange = (e) => { attendanceStatus = e.target.value; };
+
+  document.getElementById('saveAttendanceBtn').onclick = async () => {
+    errorMsg = '';
+    const staffId = document.getElementById('a_staff').value;
+    const status = document.getElementById('a_status').value;
+    const checkInTime = document.getElementById('a_checkin').value;
+    const checkOutTime = document.getElementById('a_checkout').value;
+
+    if (!staffId) { errorMsg = 'Choose a staff member.'; renderAttendance(el); return; }
+
+    const checkIn = checkInTime ? new Date(`${attendanceDate}T${checkInTime}:00`).toISOString() : null;
+    const checkOut = checkOutTime ? new Date(`${attendanceDate}T${checkOutTime}:00`).toISOString() : null;
+
+    const { error } = await sb.rpc('set_attendance_status', {
+      p_staff_id: staffId, p_work_date: attendanceDate, p_status: status,
+      p_check_in: checkIn, p_check_out: checkOut
+    });
+    if (error) { errorMsg = error.message; renderAttendance(el); return; }
+    renderAttendance(el);
+  };
 }
 
 init();
