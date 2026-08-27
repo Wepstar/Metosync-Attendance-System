@@ -483,7 +483,7 @@ async function renderStaff(el) {
       };
     }
 
-    const { data: newStaff, error } = await sb.from('staff').insert(insertData).select('id').single();
+    const { data: newStaffId, error } = await sb.rpc('add_staff', { p_staff: insertData });
     if (error) { showFormError(error.message); return; }
 
     // Save any Additional Information rows that actually have a label filled in
@@ -491,7 +491,7 @@ async function renderStaff(el) {
     const validFields = customFields.filter(f => f.label.trim());
     if (validFields.length) {
       const { error: cfError } = await sb.from('staff_custom_fields').insert(
-        validFields.map(f => ({ staff_id: newStaff.id, label: f.label.trim(), value: f.value.trim() || null }))
+        validFields.map(f => ({ staff_id: newStaffId, label: f.label.trim(), value: f.value.trim() || null }))
       );
       if (cfError) {
         // Staff record already saved successfully — surface this separately rather than
@@ -514,11 +514,11 @@ async function renderStaff(el) {
       deleteBtn.classList.toggle('hidden', !anyChecked);
     };
   });
-  deleteBtn.onclick = async () => {
+     deleteBtn.onclick = async () => {
     const ids = Array.from(document.querySelectorAll('.staffSelectCheck:checked')).map(cb => cb.dataset.id);
     if (!ids.length) return;
     if (!confirm(`Delete ${ids.length} staff record(s)? This cannot be undone.`)) return;
-    const { error } = await sb.from('staff').delete().in('id', ids);
+    const { error } = await sb.rpc('delete_staff', { p_staff_ids: ids });
     if (error) { errorMsg = error.message; }
     renderStaff(el);
   };

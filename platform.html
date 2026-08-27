@@ -181,16 +181,33 @@ async function renderOwnerDashboard() {
   };
 }
 
-function renderRegistry() {
+async function renderRegistry() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
+  const { data: changes, error } = await sb.rpc('registry_list_staff_changes');
+  const changeRows = (changes || []).map(c => `
+    <tr class="border-b">
+      <td class="py-2 px-3">${c.company_name}</td>
+      <td class="py-2 px-3">${c.staff_name}</td>
+      <td class="py-2 px-3 capitalize">${c.action}</td>
+      <td class="py-2 px-3 text-xs text-gray-400">${new Date(c.changed_at).toLocaleString()}</td>
+    </tr>`).join('');
+
   app().innerHTML = `
     <div class="flex justify-between items-center mt-6 mb-4">
       <h1 class="text-lg font-bold">Registry</h1>
       <button id="backBtn" class="text-sm text-gray-500">← Back</button>
     </div>
-    <div class="bg-white rounded-2xl p-4 shadow-sm">
+    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4">
       <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
       <button id="genCompanyInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
       ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedCompanyCode}</p>` : ''}
+    </div>
+    <div class="bg-white rounded-2xl p-4 shadow-sm overflow-x-auto">
+      <h2 class="font-medium mb-2 text-sm">Staff Record Trail</h2>
+      <table class="w-full text-sm text-left">
+        <thead><tr class="border-b text-gray-500"><th class="py-2 px-3">Company</th><th class="py-2 px-3">Staff</th><th class="py-2 px-3">Action</th><th class="py-2 px-3">When</th></tr></thead>
+        <tbody>${changeRows || `<tr><td class="py-4 px-3 text-gray-400" colspan="4">${error ? error.message : 'No changes yet.'}</td></tr>`}</tbody>
+      </table>
     </div>`;
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
