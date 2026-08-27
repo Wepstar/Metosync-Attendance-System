@@ -6,97 +6,18 @@
 <title>Metosync — Platform</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="theme.css">
 <script src="shared.js"></script>
-<style>
-  .platform-menu {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
-    max-width: 22rem;
-    margin: 0 auto;
-  }
-
-  .platform-tile {
-    min-height: 9rem;
-    border: 0;
-    padding: 2.25rem 1rem 1.5rem;
-    color: #fff;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    filter: drop-shadow(0 0.5rem 0.35rem rgb(13 42 77 / 0.16));
-    transition: transform 160ms ease, filter 160ms ease;
-  }
-
-  .platform-tile:hover,
-  .platform-tile:focus-visible {
-    transform: translateY(-0.2rem);
-    filter: drop-shadow(0 0.7rem 0.45rem rgb(13 42 77 / 0.22));
-    outline: none;
-  }
-
-  .platform-tile:active {
-    transform: translateY(0);
-  }
-
-  .platform-tile-owner {
-    grid-column: 1 / -1;
-    justify-self: center;
-    width: 58%;
-    background: #252a38;
-    clip-path: polygon(50% 0, 100% 100%, 0 100%);
-    padding-top: 3.2rem;
-  }
-
-  .platform-tile-registry {
-    background: #13bdb8;
-    clip-path: polygon(24% 0, 100% 0, 100% 100%, 0 100%);
-    text-align: right;
-    padding-right: 1.5rem;
-  }
-
-  .platform-tile-accounts {
-    color: #555b63;
-    background: #fff;
-    clip-path: polygon(0 0, 76% 0, 100% 100%, 0 100%);
-    text-align: left;
-    padding-left: 1.5rem;
-  }
-
-  .platform-tile-title {
-    display: block;
-    font-size: 1rem;
-  }
-
-  .platform-tile-subtitle {
-    display: block;
-    margin-top: 0.35rem;
-    font-size: 0.7rem;
-    font-weight: 400;
-    opacity: 0.82;
-  }
-
-  @media (max-width: 25rem) {
-    .platform-tile {
-      min-height: 8rem;
-      padding-left: 0.75rem;
-      padding-right: 0.75rem;
-    }
-
-    .platform-tile-owner {
-      width: 68%;
-    }
-  }
-</style>
 </head>
-<body class="bg-[#f4f7f5] min-h-screen">
+<body class="min-h-screen" style="background: var(--mt-bg);">
 <div id="app" class="max-w-md mx-auto p-4"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
 <script>
 let state = { session: null, isAdmin: false, role: null };
 let errorMsg = '';
-let sectionUnlocked = null; // 'owner' | 'registry' | 'accounts' | null
+let sectionUnlocked = null;
 let generatedInviteCode = '';
 let generatedCompanyCode = '';
+let registryChannel = null;
 
 function app() { return document.getElementById('app'); }
 
@@ -106,6 +27,7 @@ async function init() {
 }
 
 function render() {
+  if (registryChannel) { sb.removeChannel(registryChannel); registryChannel = null; }
   if (!state.session) return renderLogin();
   if (!state.isAdmin) return renderNoAccess();
   if (sectionUnlocked) return renderSection(sectionUnlocked);
@@ -114,14 +36,16 @@ function render() {
 
 function renderLogin() {
   app().innerHTML = `
-	<div class="text-center mt-10 mb-4"><img src="metosync-logo.png" class="h-20 mx-auto drop-shadow-lg" alt="Metosync"></div>
-    	<h1 class="text-xl font-bold text-center mb-4">Metosync Platform Login</h1>    <input id="email" type="email" autocomplete="off" placeholder="Email" class="w-full border rounded-xl px-4 py-3 mb-3">
-    <div class="relative mb-3">
-      <input id="password" type="password" autocomplete="off" placeholder="Password" class="w-full border rounded-xl px-4 py-3 pr-10">
-      <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
-    </div>
-    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
-    <button id="loginBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">Log In</button>`;
+    <div class="mt-card mt-fade-in p-6 mt-10">
+      <h1 class="text-xl font-bold text-center mb-4" style="color: var(--mt-green-dark);">Metosync Platform Login</h1>
+      <input id="email" type="email" autocomplete="off" placeholder="Email" class="w-full border rounded-xl px-4 py-3 mb-3">
+      <div class="relative mb-3">
+        <input id="password" type="password" autocomplete="off" placeholder="Password" class="w-full border rounded-xl px-4 py-3 pr-10">
+        <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+      </div>
+      ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+      <button id="loginBtn" class="w-full mt-btn-primary">Log In</button>
+    </div>`;
   document.getElementById('loginBtn').onclick = async () => {
     errorMsg = '';
     const email = document.getElementById('email').value.trim();
@@ -131,27 +55,36 @@ function renderLogin() {
     state = await getSessionAndRole();
     render();
   };
+  app().querySelectorAll('input').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
+  });
+  setTimeout(() => {
+    const e1 = document.getElementById('email'), e2 = document.getElementById('password');
+    if (e1) e1.value = ''; if (e2) e2.value = '';
+  }, 50);
 }
 
 function renderNoAccess() {
   app().innerHTML = `
-    <div class="text-center mt-10">
+    <div class="mt-card text-center p-6 mt-10">
       <p class="text-gray-600 mb-3">This account does not have platform-admin access.</p>
-      <button id="logoutBtn" class="text-sm text-blue-600">Log out</button>
+      <button id="logoutBtn" class="mt-btn-outline">Log out</button>
     </div>`;
   document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); state = { session: null, isAdmin: false, role: null }; render(); };
 }
 
 function renderLanding() {
   app().innerHTML = `
-    <h1 class="text-xl font-bold text-center mt-10 mb-1">Welcome</h1>
-    <p class="text-sm text-gray-500 text-center mb-6">Signed in as ${state.role}</p>
-    <div class="platform-menu">
-      ${state.role === 'owner' ? `<button id="ownerBtn" class="platform-tile platform-tile-owner" type="button"><span class="platform-tile-title">Owners</span><span class="platform-tile-subtitle">Company overview</span></button>` : ''}
-      <button id="registryBtn" class="platform-tile platform-tile-registry" type="button"><span class="platform-tile-title">Registry</span><span class="platform-tile-subtitle">Staff record trail</span></button>
-      <button id="accountsBtn" class="platform-tile platform-tile-accounts" type="button"><span class="platform-tile-title">Accounts</span><span class="platform-tile-subtitle">Billing and access</span></button>
-    </div>
-    <button id="logoutBtn" class="w-full text-sm text-blue-600 mt-6">Log out</button>`;
+    <div class="mt-fade-in mt-10">
+      <h1 class="text-xl font-bold text-center mb-1" style="color: var(--mt-green-dark);">Welcome</h1>
+      <p class="text-sm text-gray-500 text-center mb-6">Signed in as ${state.role}</p>
+      <div class="space-y-3">
+        ${state.role === 'owner' ? `<button id="ownerBtn" class="w-full mt-btn-primary py-3">🏛️ Owner Dashboard</button>` : ''}
+        <button id="registryBtn" class="w-full mt-btn-outline py-3">📋 Registry</button>
+        <button id="accountsBtn" class="w-full mt-btn-outline py-3">💳 Accounts &amp; Billing</button>
+      </div>
+      <button id="logoutBtn" class="w-full text-sm text-gray-500 mt-6">Log out</button>
+    </div>`;
   if (state.role === 'owner') document.getElementById('ownerBtn').onclick = () => { sectionUnlocked = 'owner'; render(); };
   document.getElementById('registryBtn').onclick = () => promptSectionPassword('registry');
   document.getElementById('accountsBtn').onclick = () => promptSectionPassword('accounts');
@@ -162,14 +95,16 @@ async function promptSectionPassword(section) {
   errorMsg = '';
   const { data: isSet } = await sb.rpc('section_password_is_set', { p_section: section });
   app().innerHTML = `
-    <h1 class="text-lg font-bold text-center mt-10 mb-4 capitalize">${section} — Password Required</h1>
-    <div class="relative mb-3">
-      <input id="sectionPw" type="password" autocomplete="off" placeholder="${isSet ? 'Enter password' : 'Set a new password'}" class="w-full border rounded-xl px-4 py-3 pr-10">
-      <button type="button" onclick="toggleEye('sectionPw',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
-    </div>
-    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
-    <button id="submitPwBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">${isSet ? 'Unlock' : 'Set & Continue'}</button>
-    <button id="backBtn" class="w-full text-sm text-gray-500 mt-3">← Back</button>`;
+    <div class="mt-card mt-fade-in p-6 mt-10">
+      <h1 class="text-lg font-bold text-center mb-4 capitalize" style="color: var(--mt-green-dark);">${section} — Password Required</h1>
+      <div class="relative mb-3">
+        <input id="sectionPw" type="password" autocomplete="off" placeholder="${isSet ? 'Enter password' : 'Set a new password'}" class="w-full border rounded-xl px-4 py-3 pr-10">
+        <button type="button" onclick="toggleEye('sectionPw',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+      </div>
+      ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+      <button id="submitPwBtn" class="w-full mt-btn-primary mb-2">${isSet ? 'Unlock' : 'Set & Continue'}</button>
+      <button id="backBtn" class="w-full text-sm text-gray-500">← Back</button>
+    </div>`;
   document.getElementById('backBtn').onclick = () => { errorMsg = ''; render(); };
   document.getElementById('submitPwBtn').onclick = async () => {
     const pw = document.getElementById('sectionPw').value;
@@ -190,9 +125,11 @@ function renderSection(section) {
   if (section === 'owner') return renderOwnerDashboard();
   if (section === 'registry') return renderRegistry();
   app().innerHTML = `
-    <h1 class="text-lg font-bold text-center mt-10 mb-4 capitalize">${section}</h1>
-    <p class="text-sm text-gray-500 text-center mb-6">Content for this section comes next — this confirms access control is working.</p>
-    <button id="backBtn" class="w-full text-sm text-gray-500">← Back</button>`;
+    <div class="mt-card text-center p-6 mt-10">
+      <h1 class="text-lg font-bold mb-2 capitalize" style="color: var(--mt-green-dark);">${section}</h1>
+      <p class="text-sm text-gray-500 mb-4">Content for this section comes next.</p>
+      <button id="backBtn" class="mt-btn-outline">← Back</button>
+    </div>`;
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
 }
 
@@ -205,48 +142,39 @@ async function renderOwnerDashboard() {
   const totalStaff = companies.reduce((sum, c) => sum + Number(c.staff_count), 0);
 
   const rows = companies.map(c => `
-    <tr class="border-b">
-      <td class="py-2 px-3">${c.name}</td>
-      <td class="py-2 px-3 font-mono text-xs">${c.org_code}</td>
-      <td class="py-2 px-3">${c.staff_count}</td>
-      <td class="py-2 px-3 capitalize">${c.status}</td>
-    </tr>`).join('');
+    <tr><td>${c.name}</td><td class="font-mono text-xs">${c.org_code}</td><td>${c.staff_count}</td><td class="capitalize">${c.status}</td></tr>`).join('');
 
   app().innerHTML = `
-    <div class="flex justify-between items-center mt-6 mb-4">
-      <h1 class="text-lg font-bold">Owner Dashboard</h1>
-      <button id="backBtn" class="text-sm text-gray-500">← Back</button>
-    </div>
-
-    <div class="grid grid-cols-2 gap-3 mb-4">
-      <div class="bg-white rounded-2xl p-4 shadow-sm text-center">
-        <p class="text-2xl font-bold text-[#0d2a4d]">${totalCompanies}</p>
-        <p class="text-xs text-gray-500">Companies</p>
+    <div class="mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🏛️ Owner Dashboard</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back</button>
       </div>
-      <div class="bg-white rounded-2xl p-4 shadow-sm text-center">
-        <p class="text-2xl font-bold text-[#0d2a4d]">${totalStaff}</p>
-        <p class="text-xs text-gray-500">Total Staff</p>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="mt-card p-4 text-center">
+          <p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${totalCompanies}</p>
+          <p class="text-xs text-gray-500">Companies</p>
+        </div>
+        <div class="mt-card p-4 text-center">
+          <p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${totalStaff}</p>
+          <p class="text-xs text-gray-500">Total Staff</p>
+        </div>
       </div>
-    </div>
-
-    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 overflow-x-auto">
-      <h2 class="font-medium mb-2 text-sm">Companies</h2>
-      <table class="w-full text-sm text-left">
-        <thead><tr class="border-b text-gray-500"><th class="py-2 px-3">Name</th><th class="py-2 px-3">Code</th><th class="py-2 px-3">Staff</th><th class="py-2 px-3">Status</th></tr></thead>
-        <tbody>${rows || '<tr><td class="py-4 px-3 text-gray-400" colspan="4">No companies yet.</td></tr>'}</tbody>
-      </table>
-    </div>
-
-    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4">
-      <h2 class="font-medium mb-2 text-sm">Invite a Platform Admin</h2>
-      <button id="genInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
-      ${generatedInviteCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedInviteCode}</p>` : ''}
-    </div>
-
-    <div class="bg-white rounded-2xl p-4 shadow-sm">
-      <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
-      <button id="genCompanyInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
-      ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedCompanyCode}</p>` : ''}
+      <div class="mt-card p-4 mb-4 overflow-x-auto">
+        <h2 class="font-medium mb-2 text-sm">Companies</h2>
+        <table class="w-full mt-table"><thead><tr><th>Name</th><th>Code</th><th>Staff</th><th>Status</th></tr></thead>
+          <tbody>${rows || '<tr><td class="text-gray-400" colspan="4">No companies yet.</td></tr>'}</tbody></table>
+      </div>
+      <div class="mt-card p-4 mb-4">
+        <h2 class="font-medium mb-2 text-sm">Invite a Platform Admin</h2>
+        <button id="genInviteBtn" class="mt-btn-primary">Generate Code</button>
+        ${generatedInviteCode ? `<p class="mt-2 font-mono text-sm px-3 py-2 inline-block rounded-lg" style="background: var(--mt-green-light);">${generatedInviteCode}</p>` : ''}
+      </div>
+      <div class="mt-card p-4">
+        <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
+        <button id="genCompanyInviteBtn" class="mt-btn-primary">Generate Code</button>
+        ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm px-3 py-2 inline-block rounded-lg" style="background: var(--mt-green-light);">${generatedCompanyCode}</p>` : ''}
+      </div>
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
@@ -262,40 +190,58 @@ async function renderOwnerDashboard() {
   };
 }
 
+function staffChangeRow(c, isNew) {
+  const actionColor = c.action === 'created' ? 'active' : c.action === 'deleted' ? 'inactive' : 'pending';
+  return `
+    <tr id="chg-${c.id}" class="${isNew ? 'mt-row-new' : ''}">
+      <td>${c.company_name}</td>
+      <td>${c.staff_name}</td>
+      <td><span class="mt-badge ${actionColor}">${c.action}</span></td>
+      <td class="text-xs text-gray-400">${new Date(c.changed_at).toLocaleString()}</td>
+    </tr>`;
+}
+
 async function renderRegistry() {
   app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
   const { data: changes, error } = await sb.rpc('registry_list_staff_changes');
-  const changeRows = (changes || []).map(c => `
-    <tr class="border-b">
-      <td class="py-2 px-3">${c.company_name}</td>
-      <td class="py-2 px-3">${c.staff_name}</td>
-      <td class="py-2 px-3 capitalize">${c.action}</td>
-      <td class="py-2 px-3 text-xs text-gray-400">${new Date(c.changed_at).toLocaleString()}</td>
-    </tr>`).join('');
+  const rowsHtml = (changes || []).map(c => staffChangeRow(c, false)).join('');
 
   app().innerHTML = `
-    <div class="flex justify-between items-center mt-6 mb-4">
-      <h1 class="text-lg font-bold">Registry</h1>
-      <button id="backBtn" class="text-sm text-gray-500">← Back</button>
-    </div>
-    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4">
-      <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
-      <button id="genCompanyInviteBtn" class="bg-[#0d2a4d] text-white rounded-xl px-4 py-2 text-sm font-medium">Generate Code</button>
-      ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm bg-gray-100 rounded-lg px-3 py-2 inline-block">${generatedCompanyCode}</p>` : ''}
-    </div>
-    <div class="bg-white rounded-2xl p-4 shadow-sm overflow-x-auto">
-      <h2 class="font-medium mb-2 text-sm">Staff Record Trail</h2>
-      <table class="w-full text-sm text-left">
-        <thead><tr class="border-b text-gray-500"><th class="py-2 px-3">Company</th><th class="py-2 px-3">Staff</th><th class="py-2 px-3">Action</th><th class="py-2 px-3">When</th></tr></thead>
-        <tbody>${changeRows || `<tr><td class="py-4 px-3 text-gray-400" colspan="4">${error ? error.message : 'No changes yet.'}</td></tr>`}</tbody>
-      </table>
+    <div class="mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">📋 Registry <span class="text-xs font-normal text-green-600 align-middle">● live</span></h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+      </div>
+      <div class="mt-card p-4 mb-4">
+        <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
+        <button id="genCompanyInviteBtn" class="mt-btn-primary">Generate Code</button>
+        ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm px-3 py-2 inline-block rounded-lg" style="background: var(--mt-green-light);">${generatedCompanyCode}</p>` : ''}
+      </div>
+      <div class="mt-card p-4 overflow-x-auto">
+        <h2 class="font-medium mb-2 text-sm">Staff Record Trail</h2>
+        <table class="w-full mt-table"><thead><tr><th>Company</th><th>Staff</th><th>Action</th><th>When</th></tr></thead>
+          <tbody id="changesBody">${rowsHtml || `<tr><td class="text-gray-400" colspan="4">${error ? error.message : 'No changes yet.'}</td></tr>`}</tbody></table>
+      </div>
     </div>`;
+
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_onboarding_invite');
     if (!error) generatedCompanyCode = data;
     renderRegistry();
   };
+
+  // Live updates: new staff_changes rows appear the instant they happen, no reload.
+  registryChannel = sb
+    .channel('staff-changes-live')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'staff_changes' }, (payload) => {
+      const body = document.getElementById('changesBody');
+      if (!body) return;
+      const emptyRow = body.querySelector('td[colspan]');
+      if (emptyRow) body.innerHTML = '';
+      body.insertAdjacentHTML('afterbegin', staffChangeRow(payload.new, true));
+    })
+    .subscribe();
 }
 
 init();
