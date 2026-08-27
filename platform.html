@@ -7,6 +7,87 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="shared.js"></script>
+<style>
+  .platform-menu {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    max-width: 22rem;
+    margin: 0 auto;
+  }
+
+  .platform-tile {
+    min-height: 9rem;
+    border: 0;
+    padding: 2.25rem 1rem 1.5rem;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    filter: drop-shadow(0 0.5rem 0.35rem rgb(13 42 77 / 0.16));
+    transition: transform 160ms ease, filter 160ms ease;
+  }
+
+  .platform-tile:hover,
+  .platform-tile:focus-visible {
+    transform: translateY(-0.2rem);
+    filter: drop-shadow(0 0.7rem 0.45rem rgb(13 42 77 / 0.22));
+    outline: none;
+  }
+
+  .platform-tile:active {
+    transform: translateY(0);
+  }
+
+  .platform-tile-owner {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 58%;
+    background: #252a38;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    padding-top: 3.2rem;
+  }
+
+  .platform-tile-registry {
+    background: #13bdb8;
+    clip-path: polygon(24% 0, 100% 0, 100% 100%, 0 100%);
+    text-align: right;
+    padding-right: 1.5rem;
+  }
+
+  .platform-tile-accounts {
+    color: #555b63;
+    background: #fff;
+    clip-path: polygon(0 0, 76% 0, 100% 100%, 0 100%);
+    text-align: left;
+    padding-left: 1.5rem;
+  }
+
+  .platform-tile-title {
+    display: block;
+    font-size: 1rem;
+  }
+
+  .platform-tile-subtitle {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 400;
+    opacity: 0.82;
+  }
+
+  @media (max-width: 25rem) {
+    .platform-tile {
+      min-height: 8rem;
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+    }
+
+    .platform-tile-owner {
+      width: 68%;
+    }
+  }
+</style>
 </head>
 <body class="bg-[#f4f7f5] min-h-screen">
 <div id="app" class="max-w-md mx-auto p-4"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
@@ -65,10 +146,10 @@ function renderLanding() {
   app().innerHTML = `
     <h1 class="text-xl font-bold text-center mt-10 mb-1">Welcome</h1>
     <p class="text-sm text-gray-500 text-center mb-6">Signed in as ${state.role}</p>
-    <div class="space-y-3">
-      ${state.role === 'owner' ? `<button id="ownerBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">Owner Dashboard</button>` : ''}
-      <button id="registryBtn" class="w-full bg-gray-700 text-white rounded-xl py-3 font-medium">Registry</button>
-      <button id="accountsBtn" class="w-full bg-gray-700 text-white rounded-xl py-3 font-medium">Accounts &amp; Billing</button>
+    <div class="platform-menu">
+      ${state.role === 'owner' ? `<button id="ownerBtn" class="platform-tile platform-tile-owner" type="button"><span class="platform-tile-title">Owners</span><span class="platform-tile-subtitle">Company overview</span></button>` : ''}
+      <button id="registryBtn" class="platform-tile platform-tile-registry" type="button"><span class="platform-tile-title">Registry</span><span class="platform-tile-subtitle">Staff record trail</span></button>
+      <button id="accountsBtn" class="platform-tile platform-tile-accounts" type="button"><span class="platform-tile-title">Accounts</span><span class="platform-tile-subtitle">Billing and access</span></button>
     </div>
     <button id="logoutBtn" class="w-full text-sm text-blue-600 mt-6">Log out</button>`;
   if (state.role === 'owner') document.getElementById('ownerBtn').onclick = () => { sectionUnlocked = 'owner'; render(); };
