@@ -21,11 +21,11 @@ let staffList = [];
 let capturedLat = null;
 let capturedLng = null;
 let gpsStatus = '';
-let staffPayType = 'daily'; // 'daily' | 'fixed'
+let staffPayType = 'daily';
 let staffCountry = '';
-let staffTypeSelected = 'permanent'; // 'permanent' | 'casual'
+let staffTypeSelected = 'permanent';
 let casualPinEnabled = false;
-let customFields = []; // [{ label: '', value: '' }]
+let customFields = [];
 
 function app() { return document.getElementById('app'); }
 
@@ -263,8 +263,8 @@ function statusBadge(status) {
 function customFieldsHtml() {
   return customFields.map((f, i) => `
     <div class="flex gap-2 items-center mb-2">
-      <input class="cfLabel border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="" value="${f.label}">
-      <input class="cfValue border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="" value="${f.value}">
+      <input class="cfLabel border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="e.g. Start Date" value="${f.label}">
+      <input class="cfValue border rounded-lg px-3 py-2 text-sm flex-1" data-i="${i}" placeholder="e.g. 23rd August, 2026" value="${f.value}">
       <button type="button" class="cfRemoveBtn text-red-600 text-sm px-1" data-i="${i}">✕</button>
     </div>`).join('');
 }
@@ -400,8 +400,6 @@ async function renderStaff(el) {
     };
   }
 
-  // Custom fields: read current input values into state before re-rendering,
-  // so nothing typed is lost when a row is added/removed.
   function syncCustomFieldsFromDom() {
     document.querySelectorAll('.cfLabel').forEach(inp => { customFields[+inp.dataset.i].label = inp.value; });
     document.querySelectorAll('.cfValue').forEach(inp => { customFields[+inp.dataset.i].value = inp.value; });
@@ -437,9 +435,7 @@ async function renderStaff(el) {
       showFormError('Fill in Full Name, Mobile, and choose a site.'); return;
     }
 
-    let insertData = {
-      company_id: myProfile.company_id, site_id: siteId, full_name: name, phone: mobile, staff_type: staffType
-    };
+    let insertData = { site_id: siteId, full_name: name, phone: mobile, staff_type: staffType };
 
     if (staffType === 'casual') {
       const salary = document.getElementById('f_salary').value;
@@ -486,7 +482,6 @@ async function renderStaff(el) {
     const { data: newStaffId, error } = await sb.rpc('add_staff', { p_staff: insertData });
     if (error) { showFormError(error.message); return; }
 
-    // Save any Additional Information rows that actually have a label filled in
     syncCustomFieldsFromDom();
     const validFields = customFields.filter(f => f.label.trim());
     if (validFields.length) {
@@ -494,8 +489,6 @@ async function renderStaff(el) {
         validFields.map(f => ({ staff_id: newStaffId, label: f.label.trim(), value: f.value.trim() || null }))
       );
       if (cfError) {
-        // Staff record already saved successfully — surface this separately rather than
-        // implying the whole Add Staff action failed.
         errorMsg = 'Staff saved, but additional info failed to save: ' + cfError.message;
         renderStaff(el);
         return;
@@ -514,7 +507,7 @@ async function renderStaff(el) {
       deleteBtn.classList.toggle('hidden', !anyChecked);
     };
   });
-     deleteBtn.onclick = async () => {
+  deleteBtn.onclick = async () => {
     const ids = Array.from(document.querySelectorAll('.staffSelectCheck:checked')).map(cb => cb.dataset.id);
     if (!ids.length) return;
     if (!confirm(`Delete ${ids.length} staff record(s)? This cannot be undone.`)) return;
