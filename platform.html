@@ -53,7 +53,7 @@ async function init() {
 
 function render() {
   if (registryChannel) { sb.removeChannel(registryChannel); registryChannel = null; }
-  app().classList.toggle('platform-wide', sectionUnlocked === 'registry');
+  app().classList.toggle('platform-wide', sectionUnlocked === 'registry' || sectionUnlocked === 'owner');
   if (!state.session) return renderLogin();
   if (!state.isAdmin) return renderNoAccess();
   if (sectionUnlocked) return renderSection(sectionUnlocked);
@@ -171,13 +171,13 @@ async function renderOwnerDashboard() {
   const companyCards = (companies || []).map(companyCardHtml).join('');
 
   app().innerHTML = `
-    <div class="mt-fade-in">
+    <div class="registry-page mt-fade-in">
       <div class="flex justify-between items-center mt-6 mb-4">
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🏛️ Owner Dashboard</h1>
         <button id="backBtn" class="text-sm text-gray-500">← Back</button>
       </div>
       ${statsCardsHtml(statsRow)}
-      <div class="mt-card p-4 mb-4">
+      <div class="mt-card p-5 mb-5 registry-company-panel">
         <div class="flex justify-between items-center gap-2 mb-3"><h2 class="font-medium text-sm">Companies</h2><input id="companySearch" type="search" placeholder="Search companies..." class="border rounded-lg px-3 py-2 text-sm"></div>
         <div id="companyCards" class="space-y-2">${companyCards || '<p class="text-gray-400 text-sm">No companies yet.</p>'}</div>
       </div>
