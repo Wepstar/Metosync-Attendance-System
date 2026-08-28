@@ -522,9 +522,11 @@ async function renderStaff(el) {
 
 function attendanceStatusBadge(status) {
   const map = { present: 'active', absent: 'inactive', on_leave: 'on_leave', sick: 'pending', holiday: 'pending' };
-  const labels = { present: 'Present', absent: 'Absent', on_leave: 'On Leave', sick: 'Sick', holiday: 'Holiday' };
+  const labels = { present: '🟢 Present', absent: '🔴 Absent', on_leave: '🟡 On Leave', sick: '🤒 Sick', holiday: '🏖️ Holiday' };
   return `<span class="mt-badge ${map[status] || 'pending'}">${labels[status] || status}</span>`;
 }
+
+let attendanceChannel = null;
 
 async function renderAttendance(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading attendance…</p>`;
@@ -538,15 +540,30 @@ async function renderAttendance(el) {
 
   const staffOptions = staffList.map(s => `<option value="${s.id}">${s.full_name} — ${s.sites ? s.sites.name : 'no site'}</option>`).join('');
 
-  const rows = (attData || []).map(a => `
-    <tr>
+  const quickIcons = [
+    { status: 'present', icon: '🟢', title: 'Mark Present' },
+    { status: 'absent', icon: '🔴', title: 'Mark Absent' },
+    { status: 'on_leave', icon: '🟡', title: 'Mark On Leave' },
+    { status: 'sick', icon: '🤒', title: 'Mark Sick' },
+    { status: 'holiday', icon: '🏖️', title: 'Mark Holiday' },
+  ];
+
+  function attendanceRow(a) {
+    const canCheckOut = a.check_in && !a.check_out;
+    return `
+    <tr id="att-${a.id}">
       <td>${a.staff ? a.staff.full_name : ''}</td>
       <td>${a.sites ? a.sites.name : ''}</td>
       <td>${attendanceStatusBadge(a.status)}</td>
       <td>${a.check_in ? new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
       <td>${a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
       <td>${a.total_hours != null ? a.total_hours + ' hrs' : '—'}</td>
-    </tr>`).join('');
+      <td class="whitespace-nowrap">
+        ${quickIcons.map(q => `<button class="quickStatusBtn mt-icon-btn edit" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${a.staff_id}" data-status="${q.status}" data-checkin="${a.check_in || ''}" data-checkout="${a.check_out || ''}" title="${q.title}">${q.icon}</button>`).join('')}
+        ${canCheckOut ? `<button class="manualCheckoutBtn mt-icon-btn delete ml-1" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${a.staff_id}" data-checkin="${a.check_in}" title="Manual Check-Out">⏱</button>` : ''}
+      </td>
+    </tr>`;
+  }
 
   el.innerHTML = `
     <div class="mt-card p-4 mb-4 mt-fade-in">
@@ -570,11 +587,12 @@ async function renderAttendance(el) {
 
     <div class="mt-card p-4 overflow-x-auto mt-fade-in">
       <div class="flex justify-between items-center mb-2">
-        <h2 class="font-medium">Attendance for ${attendanceDate}</h2>
+        <h2 class="font-medium">Attendance for ${attendanceDate} <span class="text-xs font-normal text-green-600 align-middle">● live</span></h2>
+        <p class="text-xs text-gray-400">Click an icon to change status instantly, or ⏱ to check someone out manually</p>
       </div>
       <table class="w-full mt-table">
-        <thead><tr><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th></tr></thead>
-        <tbody>${rows || '<tr><td class="text-gray-400 py-4" colspan="6">No attendance marked for this date yet.</td></tr>'}</tbody>
+        <thead><tr><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Quick Actions</th></tr></thead>
+        <tbody id="attendanceBody">${(attData || []).map(attendanceRow).join('') || '<tr><td class="text-gray-400 py-4" colspan="7">No attendance marked for this date yet.</td></tr>'}</tbody>
       </table>
     </div>`;
 
@@ -595,11 +613,58 @@ async function renderAttendance(el) {
 
     const { error } = await sb.rpc('set_attendance_status', {
       p_staff_id: staffId, p_work_date: attendanceDate, p_status: status,
-      p_check_in: checkIn, p_check_out: checkOut
+      p_check_in: checkIn, p_check_out: checkOut, p_reason: null
     });
     if (error) { errorMsg = error.message; renderAttendance(el); return; }
     renderAttendance(el);
   };
+
+  // Quick status icons — instant one-click change, preserves existing check-in/out
+  document.querySelectorAll('.quickStatusBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const staffId = btn.dataset.staff;
+      const status = btn.dataset.status;
+      const checkIn = btn.dataset.checkin || null;
+      const checkOut = btn.dataset.checkout || null;
+      btn.textContent = '⏳';
+      const { error } = await sb.rpc('set_attendance_status', {
+        p_staff_id: staffId, p_work_date: attendanceDate, p_status: status,
+        p_check_in: checkIn, p_check_out: checkOut, p_reason: null
+      });
+      if (error) { errorMsg = error.message; }
+      renderAttendance(el);
+    };
+  });
+
+  // Manual check-out — requires a reason, forms the evidence trail
+  document.querySelectorAll('.manualCheckoutBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const reason = prompt('Reason for manual check-out (required — this is recorded as an evidence trail):');
+      if (reason === null) return; // cancelled
+      if (!reason.trim()) { alert('A reason is required for manual check-out.'); return; }
+
+      const staffId = btn.dataset.staff;
+      const checkIn = btn.dataset.checkin;
+      const row = staffList.find(s => s.id === staffId);
+      const currentStatus = document.querySelector(`#att-${btn.closest('tr').id.replace('att-','')}`) ? attendanceStatus : 'present';
+
+      const { error } = await sb.rpc('set_attendance_status', {
+        p_staff_id: staffId, p_work_date: attendanceDate, p_status: 'present',
+        p_check_in: checkIn, p_check_out: new Date().toISOString(), p_reason: reason.trim()
+      });
+      if (error) { errorMsg = error.message; }
+      renderAttendance(el);
+    };
+  });
+
+  // Real-time pulse: any attendance change for this date appears instantly, no reload.
+  if (attendanceChannel) { sb.removeChannel(attendanceChannel); attendanceChannel = null; }
+  attendanceChannel = sb
+    .channel('attendance-live-' + attendanceDate)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance', filter: `work_date=eq.${attendanceDate}` }, () => {
+      renderAttendance(el);
+    })
+    .subscribe();
 }
 
 init();
