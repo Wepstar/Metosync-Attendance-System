@@ -8,6 +8,10 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="theme.css">
 <script src="shared.js"></script>
+<style>
+  .cycleStatusBtn { cursor: pointer; transition: opacity 160ms ease; }
+  .cycleStatusBtn:hover { opacity: 0.75; }
+</style>
 </head>
 <body class="min-h-screen" style="background: var(--mt-bg);">
 <div id="app" class="max-w-4xl mx-auto p-4"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
@@ -49,6 +53,7 @@ async function loadProfile() {
 }
 
 function render() {
+  if (!session || activeTab !== 'attendance') clearAttendanceAutoRefresh();
   if (!session) return renderLogin();
   if (!myProfile) return renderNoCompany();
   renderDashboard();
@@ -136,6 +141,7 @@ async function renderTabContent() {
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'attendance') return renderAttendance(el);
+  clearAttendanceAutoRefresh();
 
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
 }
@@ -521,22 +527,52 @@ async function renderStaff(el) {
 // ===== ATTENDANCE =====
 
 function attendanceStatusBadge(status) {
-  const map = { present: 'active', absent: 'inactive', on_leave: 'on_leave', sick: 'pending', holiday: 'pending' };
-  const labels = { present: '🟢 Present', absent: '🔴 Absent', on_leave: '🟡 On Leave', sick: '🤒 Sick', holiday: '🏖️ Holiday' };
+  const map = { present: 'active', late: 'on_leave', absent: 'inactive', off: 'pending', sick: 'pending', on_leave: 'on_leave', holiday: 'pending' };
+  const labels = { present: '🟢 Present', late: '🟡 Late', absent: '🔴 Absent', off: '⚪ Off', sick: '🤒 Sick', on_leave: '🟡 On Leave', holiday: '🏖️ Holiday' };
   return `<span class="mt-badge ${map[status] || 'pending'}">${labels[status] || status}</span>`;
 }
 
 let attendanceChannel = null;
+let attendanceRefreshInterval = null;
+
+function clearAttendanceAutoRefresh() {
+  if (attendanceRefreshInterval) {
+    clearInterval(attendanceRefreshInterval);
+    attendanceRefreshInterval = null;
+  }
+}
 
 async function renderAttendance(el) {
+  clearAttendanceAutoRefresh();
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading attendance…</p>`;
+  const yesterday = new Date(`${attendanceDate}T00:00:00`);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayDate = yesterday.toISOString().slice(0, 10);
   const [{ data: staffData, error: staffErr }, { data: attData, error: attErr }] = await Promise.all([
-    sb.from('staff').select('id, full_name, phone, sites(name)').order('full_name'),
-    sb.from('attendance').select('*, staff(full_name), sites(name)').eq('work_date', attendanceDate).order('created_at', { ascending: false })
+    sb.from('staff').select('id, full_name, phone, sites(name, default_start_time)').order('full_name'),
+    sb.from('attendance').select('*, staff(full_name, phone), sites(name, default_start_time)').eq('work_date', attendanceDate).order('created_at', { ascending: false })
   ]);
   if (staffErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${staffErr.message}</p>`; return; }
   if (attErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${attErr.message}</p>`; return; }
+  const { data: yesterdayData, error: yesterdayErr } = await sb.from('attendance').select('status').eq('work_date', yesterdayDate);
+  if (yesterdayErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${yesterdayErr.message}</p>`; return; }
   staffList = staffData;
+
+  const attendanceByStaff = new Map((attData || []).map(record => [record.staff_id, record]));
+  const trendStatuses = [
+    { status: 'present', icon: '🟢' },
+    { status: 'late', icon: '🟡' },
+    { status: 'absent', icon: '🔴' },
+    { status: 'off', icon: '⚪' },
+    { status: 'sick', icon: '🤒' },
+  ];
+  const countStatus = (records, status) => (records || []).filter(record => record.status === status).length;
+  const trendCards = trendStatuses.map(({ status, icon }) => {
+    const todayCount = countStatus(attData, status);
+    const yesterdayCount = countStatus(yesterdayData, status);
+    const arrow = todayCount > yesterdayCount ? '⬆️' : todayCount < yesterdayCount ? '⬇️' : '➡️';
+    return `<div class="mt-card p-3"><div class="text-lg">${icon}</div><div class="text-xs capitalize">${status}</div><strong>${todayCount}</strong> <span class="text-xs text-gray-500">${arrow} ${yesterdayCount}</span></div>`;
+  }).join('');
 
   const staffOptions = staffList.map(s => `<option value="${s.id}">${s.full_name} — ${s.sites ? s.sites.name : 'no site'}</option>`).join('');
 
@@ -548,24 +584,42 @@ async function renderAttendance(el) {
     { status: 'holiday', icon: '🏖️', title: 'Mark Holiday' },
   ];
 
-  function attendanceRow(a) {
-    const canCheckOut = a.check_in && !a.check_out;
+  const statusCycle = ['present', 'late', 'absent', 'off', 'sick'];
+
+  function attendanceRow(staff) {
+    const a = attendanceByStaff.get(staff.id);
+    const canCheckOut = a && a.check_in && !a.check_out;
+    const site = a && a.sites ? a.sites : staff.sites;
+    const lateMinutes = a && a.status === 'late' && site && site.default_start_time && a.check_in
+      ? Math.max(0, Math.round((new Date(a.check_in) - new Date(`${attendanceDate}T${site.default_start_time}`)) / 60000))
+      : null;
+    const absentReason = a && a.status === 'absent' ? `
+      <div class="flex gap-1 mt-1">
+        <button type="button" class="absentReasonBtn mt-badge ${a.absent_reason === 'no_show' ? 'inactive' : ''}" data-attendance="${a.id}" data-reason="no_show">No Show</button>
+        <button type="button" class="absentReasonBtn mt-badge ${a.absent_reason === 'excused' ? 'active' : ''}" data-attendance="${a.id}" data-reason="excused">Excused</button>
+      </div>` : '';
+    const statusCell = a
+      ? `<button type="button" class="cycleStatusBtn cursor-pointer transition-opacity hover:opacity-75" data-staff="${staff.id}" title="Change status">${attendanceStatusBadge(a.status)}${lateMinutes != null && lateMinutes > 0 ? `<span class="block text-xs text-red-600">${lateMinutes} min late</span>` : ''}</button>${absentReason}`
+      : '<span class="text-xs text-gray-400">Not Marked</span>';
     return `
-    <tr id="att-${a.id}">
-      <td>${a.staff ? a.staff.full_name : ''}</td>
-      <td>${a.sites ? a.sites.name : ''}</td>
-      <td>${attendanceStatusBadge(a.status)}</td>
-      <td>${a.check_in ? new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</td>
-      <td>${a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</td>
-      <td>${a.total_hours != null ? a.total_hours + ' hrs' : '—'}</td>
+    <tr id="att-${staff.id}">
+      <td><input type="checkbox" class="attendanceSelectCheck" data-staff="${staff.id}" ${!a || !a.check_in ? 'checked' : ''}></td>
+      <td>${staff.full_name}<span class="block text-xs text-gray-400">${staff.phone || ''}</span></td>
+      <td>${site ? site.name : ''}</td>
+      <td>${statusCell}</td>
+      <td>${a && a.check_in ? new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</td>
+      <td>${a && a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</td>
+      <td>${a && a.total_hours != null ? a.total_hours + ' hrs' : '—'}</td>
       <td class="whitespace-nowrap">
-        ${quickIcons.map(q => `<button class="quickStatusBtn mt-icon-btn edit" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${a.staff_id}" data-status="${q.status}" data-checkin="${a.check_in || ''}" data-checkout="${a.check_out || ''}" title="${q.title}">${q.icon}</button>`).join('')}
-        ${canCheckOut ? `<button class="manualCheckoutBtn mt-icon-btn delete ml-1" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${a.staff_id}" data-checkin="${a.check_in}" title="Manual Check-Out">⏱</button>` : ''}
+        ${quickIcons.map(q => `<button class="quickStatusBtn mt-icon-btn edit" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${staff.id}" data-status="${q.status}" data-checkin="${a ? a.check_in || '' : ''}" data-checkout="${a ? a.check_out || '' : ''}" title="${q.title}">${q.icon}</button>`).join('')}
+        ${canCheckOut ? `<button class="manualCheckoutBtn mt-icon-btn delete ml-1" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${staff.id}" data-checkin="${a.check_in}" title="Manual Check-Out">⏱</button>` : ''}
       </td>
     </tr>`;
   }
 
   el.innerHTML = `
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4 mt-fade-in">${trendCards}</div>
+
     <div class="mt-card p-4 mb-4 mt-fade-in">
       <h2 class="font-medium mb-3">Set Status for a Day</h2>
       <div class="grid grid-cols-2 gap-2 mb-2">
@@ -601,17 +655,78 @@ async function renderAttendance(el) {
 
     <div class="mt-card p-4 overflow-x-auto mt-fade-in">
       <div class="flex justify-between items-center mb-2">
-        <h2 class="font-medium">Attendance for ${attendanceDate} <span class="text-xs font-normal text-green-600 align-middle">● live</span></h2>
+        <h2 class="font-medium">Attendance for ${attendanceDate} <span class="text-xs font-normal text-green-600 align-middle">● live</span> <button id="refreshAttendanceBtn" type="button" class="text-sm" title="Refresh attendance">🔄</button></h2>
         <p class="text-xs text-gray-400">Click an icon to change status instantly, or ⏱ to check someone out manually</p>
       </div>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <select id="bulkAttendanceStatus" class="border rounded-lg px-3 py-2 text-sm">
+          <option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option><option value="off">Off</option><option value="sick">Sick</option>
+        </select>
+        <button id="applyBulkAttendanceBtn" type="button" class="mt-btn-primary">Apply to Selected</button>
+      </div>
       <table class="w-full mt-table">
-        <thead><tr><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Quick Actions</th></tr></thead>
-        <tbody id="attendanceBody">${(attData || []).map(attendanceRow).join('') || '<tr><td class="text-gray-400 py-4" colspan="7">No attendance marked for this date yet.</td></tr>'}</tbody>
+        <thead><tr><th><input type="checkbox" id="selectAllAttendance" aria-label="Select all staff"></th><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Quick Actions</th></tr></thead>
+        <tbody id="attendanceBody">${staffList.map(attendanceRow).join('') || '<tr><td class="text-gray-400 py-4" colspan="8">No staff yet.</td></tr>'}</tbody>
       </table>
     </div>`;
 
   document.getElementById('a_date').onchange = (e) => { attendanceDate = e.target.value; renderAttendance(el); };
   document.getElementById('a_status').onchange = (e) => { attendanceStatus = e.target.value; };
+
+  document.getElementById('refreshAttendanceBtn').onclick = () => {
+    document.getElementById('refreshAttendanceBtn').classList.add('animate-spin');
+    renderAttendance(el);
+  };
+
+  document.querySelectorAll('.absentReasonBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const { error } = await sb.from('attendance').update({ absent_reason: btn.dataset.reason }).eq('id', btn.dataset.attendance);
+      if (error) errorMsg = error.message;
+      renderAttendance(el);
+    };
+  });
+
+  document.querySelectorAll('.cycleStatusBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const record = attendanceByStaff.get(btn.dataset.staff);
+      if (!record) return;
+      const currentIndex = statusCycle.indexOf(record.status);
+      const nextStatus = statusCycle[(currentIndex + 1) % statusCycle.length];
+      const { error } = await sb.rpc('set_attendance_status', {
+        p_staff_id: record.staff_id, p_work_date: attendanceDate, p_status: nextStatus,
+        p_check_in: record.check_in, p_check_out: record.check_out, p_reason: null
+      });
+      if (error) errorMsg = error.message;
+      renderAttendance(el);
+    };
+  });
+
+  const attendanceChecks = () => Array.from(document.querySelectorAll('.attendanceSelectCheck'));
+  const selectAllAttendance = document.getElementById('selectAllAttendance');
+  selectAllAttendance.onchange = () => attendanceChecks().forEach(check => { check.checked = selectAllAttendance.checked; });
+  attendanceChecks().forEach(check => {
+    check.onchange = () => {
+      selectAllAttendance.checked = attendanceChecks().every(item => item.checked);
+    };
+  });
+
+  document.getElementById('applyBulkAttendanceBtn').onclick = async () => {
+    const selectedStaffIds = attendanceChecks().filter(check => check.checked).map(check => check.dataset.staff);
+    if (!selectedStaffIds.length) { errorMsg = 'Select at least one staff member.'; renderAttendance(el); return; }
+    const status = document.getElementById('bulkAttendanceStatus').value;
+    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+    if (!confirm(`Mark ${selectedStaffIds.length} staff as ${statusLabel}?`)) return;
+    const results = await Promise.all(selectedStaffIds.map(staffId => {
+      const record = attendanceByStaff.get(staffId);
+      return sb.rpc('set_attendance_status', {
+        p_staff_id: staffId, p_work_date: attendanceDate, p_status: status,
+        p_check_in: record ? record.check_in : null, p_check_out: record ? record.check_out : null, p_reason: null
+      });
+    }));
+    const failed = results.find(result => result.error);
+    if (failed) errorMsg = failed.error.message;
+    renderAttendance(el);
+  };
 
   document.getElementById('saveAttendanceBtn').onclick = async () => {
     errorMsg = '';
@@ -697,6 +812,7 @@ async function renderAttendance(el) {
       renderAttendance(el);
     })
     .subscribe();
+  attendanceRefreshInterval = setInterval(() => renderAttendance(el), 60000);
 }
 
 init();
