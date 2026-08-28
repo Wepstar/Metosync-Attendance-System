@@ -214,12 +214,12 @@ function metricValue(row, ...keys) {
 
 function statsCardsHtml(stats) {
   const metrics = [
-    [['companies', 'total_companies'], 'Companies'],
-    [['total_staff', 'staff'], 'Total Staff'],
-    [['sites', 'total_sites'], 'Sites'],
-    [['new_this_month', 'new_companies_this_month'], 'New This Month']
+    [['companies', 'total_companies'], 'Companies', '#2563eb'],
+    [['total_staff', 'staff'], 'Total Staff', '#0f766e'],
+    [['sites', 'total_sites'], 'Sites', '#d97706'],
+    [['new_this_month', 'new_companies_this_month'], 'New This Month', '#e11d48']
   ].filter(([keys]) => metricValue(stats, ...keys) !== null);
-  return `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">${metrics.map(([keys, label]) => `<div class="mt-card p-3 text-center"><p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${metricValue(stats, ...keys)}</p><p class="text-xs text-gray-500">${label}</p></div>`).join('')}</div>`;
+  return `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">${metrics.map(([keys, label, color]) => `<div class="mt-card p-3 text-center" style="border-top: 4px solid ${color};"><p class="text-2xl font-bold" style="color: ${color};">${metricValue(stats, ...keys)}</p><p class="text-xs text-gray-500">${label}</p></div>`).join('')}</div>`;
 }
 
 function companyCardHtml(company) {
