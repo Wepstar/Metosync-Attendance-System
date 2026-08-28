@@ -193,8 +193,8 @@ async function renderSites(el) {
 
       <label class="text-xs font-medium text-gray-500">GPS Location (optional, for check-in verification)</label>
       <div class="flex items-center gap-2 mb-3">
-        <button id="captureGpsBtn" type="button" class="mt-btn-outline">📍 Capture GPS</button>
-        ${gpsStatus ? `<span class="text-xs ${capturedLat ? 'text-green-700' : 'text-red-600'}">${gpsStatus}</span>` : ''}
+                <button id="captureGpsBtn" type="button" class="mt-btn-outline">📍 Capture GPS</button>
+        <span id="gpsStatusWrap" class="text-xs ${capturedLat ? 'text-green-700' : 'text-red-600'}">${gpsStatus}</span>
       </div>
 
       ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
@@ -206,12 +206,18 @@ async function renderSites(el) {
       ${groupsHtml || '<p class="text-gray-400 text-sm">No sites yet.</p>'}
     </div>`;
 
+    function updateGpsStatusDisplay() {
+    const wrap = document.getElementById('gpsStatusWrap');
+    if (wrap) wrap.textContent = gpsStatus;
+    if (wrap) wrap.className = `text-xs ${capturedLat ? 'text-green-700' : 'text-red-600'}`;
+  }
+
   document.getElementById('captureGpsBtn').onclick = () => {
-    if (!navigator.geolocation) { gpsStatus = '❌ GPS not supported on this device/browser.'; renderSites(el); return; }
-    gpsStatus = 'Capturing…'; renderSites(el);
+    if (!navigator.geolocation) { gpsStatus = '❌ GPS not supported on this device/browser.'; updateGpsStatusDisplay(); return; }
+    gpsStatus = 'Capturing…'; updateGpsStatusDisplay();
     navigator.geolocation.getCurrentPosition(
-      (pos) => { capturedLat = pos.coords.latitude; capturedLng = pos.coords.longitude; gpsStatus = `✅ Captured: ${capturedLat.toFixed(5)}, ${capturedLng.toFixed(5)}`; renderSites(el); },
-      (err) => { capturedLat = null; capturedLng = null; gpsStatus = '❌ Could not get location — ' + err.message; renderSites(el); },
+      (pos) => { capturedLat = pos.coords.latitude; capturedLng = pos.coords.longitude; gpsStatus = `✅ Captured: ${capturedLat.toFixed(5)}, ${capturedLng.toFixed(5)}`; updateGpsStatusDisplay(); },
+      (err) => { capturedLat = null; capturedLng = null; gpsStatus = '❌ Could not get location — ' + err.message; updateGpsStatusDisplay(); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
