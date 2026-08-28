@@ -223,12 +223,13 @@ function statsCardsHtml(stats) {
 }
 
 function companyCardHtml(company) {
+  const companyId = company.id || company.company_id;
   const initial = (company.name || '?').trim().charAt(0).toUpperCase() || '?';
   const statusClass = company.status === 'active' ? 'active' : company.status === 'inactive' ? 'inactive' : 'pending';
   return `<div class="companyCard flex items-center gap-3 border rounded-xl p-3" data-name="${(company.name || '').toLowerCase()}" data-code="${(company.org_code || '').toLowerCase()}">
     <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style="background: var(--mt-green-dark);">${initial}</div>
     <div class="min-w-0 flex-1"><p class="font-medium truncate">${company.name || ''}</p><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p><p class="text-xs text-gray-500">${metricValue(company, 'staff_count') !== null ? `Staff: ${metricValue(company, 'staff_count')}` : ''}${metricValue(company, 'site_count', 'sites_count') !== null ? ` · Sites: ${metricValue(company, 'site_count', 'sites_count')}` : ''}</p></div>
-    <span class="mt-badge ${statusClass}">${company.status || ''}</span><button type="button" class="viewCompanyBtn mt-btn-outline text-xs" data-company-id="${company.id}">View Details</button>
+    <span class="mt-badge ${statusClass}">${company.status || ''}</span><button type="button" class="viewCompanyBtn mt-btn-outline text-xs" data-company-id="${companyId || ''}" ${companyId ? '' : 'disabled'}>View Details</button>
   </div>`;
 }
 
@@ -243,6 +244,7 @@ function detailMetric(label, value) {
 }
 
 async function openCompanyDetails(companyId) {
+  if (!companyId) { alert('Company ID is missing from the company list.'); return; }
   const [{ data: detail, error: detailError }, { data: activity, error: activityError }] = await Promise.all([
     sb.rpc('platform_get_company_detail', { p_company_id: companyId }),
     sb.rpc('registry_list_company_activity', { p_company_id: companyId })
