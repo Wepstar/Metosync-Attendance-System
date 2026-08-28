@@ -8,6 +8,31 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="theme.css">
 <script src="shared.js"></script>
+<style>
+  #app.platform-wide {
+    width: 100%;
+    max-width: none;
+    padding: 1.5rem clamp(1rem, 3vw, 3rem);
+  }
+
+  .registry-page {
+    width: 100%;
+    max-width: 120rem;
+    margin: 0 auto;
+  }
+
+  .registry-page .registry-company-panel {
+    min-height: 18rem;
+  }
+
+  .registry-page .registry-audit-panel {
+    min-height: 24rem;
+  }
+
+  .registry-page .registry-audit-panel table {
+    min-width: 52rem;
+  }
+</style>
 </head>
 <body class="min-h-screen" style="background: var(--mt-bg);">
 <div id="app" class="max-w-md mx-auto p-4"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
@@ -28,6 +53,7 @@ async function init() {
 
 function render() {
   if (registryChannel) { sb.removeChannel(registryChannel); registryChannel = null; }
+  app().classList.toggle('platform-wide', sectionUnlocked === 'registry');
   if (!state.session) return renderLogin();
   if (!state.isAdmin) return renderNoAccess();
   if (sectionUnlocked) return renderSection(sectionUnlocked);
@@ -271,13 +297,13 @@ async function renderRegistry() {
     </tr>`).join('');
 
   app().innerHTML = `
-    <div class="mt-fade-in">
+    <div class="registry-page mt-fade-in">
       <div class="flex justify-between items-center mt-6 mb-4">
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">📋 Registry <span class="text-xs font-normal text-green-600 align-middle">● live</span></h1>
         <button id="backBtn" class="text-sm text-gray-500">← Back</button>
       </div>
       ${statsCardsHtml(statsRow)}
-      <div class="mt-card p-4 mb-4">
+      <div class="mt-card p-5 mb-5 registry-company-panel">
         <div class="flex justify-between items-center gap-2 mb-3"><h2 class="font-medium text-sm">Companies</h2><input id="companySearch" type="search" placeholder="Search companies..." class="border rounded-lg px-3 py-2 text-sm"></div>
         <div id="companyCards" class="space-y-2">${companyCards || '<p class="text-gray-400 text-sm">No companies yet.</p>'}</div>
       </div>
@@ -286,7 +312,7 @@ async function renderRegistry() {
         <button id="genCompanyInviteBtn" class="mt-btn-primary">Generate Code</button>
         ${generatedCompanyCode ? `<p class="mt-2 font-mono text-sm px-3 py-2 inline-block rounded-lg" style="background: var(--mt-green-light);">${generatedCompanyCode}</p>` : ''}
       </div>
-      <div class="mt-card p-4 overflow-x-auto">
+      <div class="mt-card p-5 overflow-x-auto registry-audit-panel">
         <h2 class="font-medium mb-2 text-sm">Full Audit Trail — All Organizations</h2>
         <table class="w-full mt-table"><thead><tr><th>Company</th><th>Type</th><th>Action</th><th>Detail</th><th>When</th></tr></thead>
           <tbody id="changesBody">${rowsHtml || `<tr><td class="text-gray-400" colspan="5">${error ? error.message : 'No activity yet.'}</td></tr>`}</tbody></table>
