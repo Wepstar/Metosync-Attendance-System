@@ -578,8 +578,8 @@ async function renderAttendance(el) {
           <option value="sick" ${attendanceStatus === 'sick' ? 'selected' : ''}>Sick</option>
           <option value="holiday" ${attendanceStatus === 'holiday' ? 'selected' : ''}>Holiday</option>
         </select>
-        <input id="a_checkin" type="time" placeholder="Check-in (optional)" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="a_checkout" type="time" placeholder="Check-out (optional)" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="a_checkin" type="text" inputmode="text" placeholder="Check-in (e.g. 08:30 AM)" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="a_checkout" type="text" inputmode="text" placeholder="Check-out (e.g. 05:15 PM)" class="border rounded-lg px-3 py-2 text-sm">
       </div>
       ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
       <button id="saveAttendanceBtn" type="button" class="mt-btn-primary">Save Status</button>
@@ -608,8 +608,23 @@ async function renderAttendance(el) {
 
     if (!staffId) { errorMsg = 'Choose a staff member.'; renderAttendance(el); return; }
 
-    const checkIn = checkInTime ? new Date(`${attendanceDate}T${checkInTime}:00`).toISOString() : null;
-    const checkOut = checkOutTime ? new Date(`${attendanceDate}T${checkOutTime}:00`).toISOString() : null;
+    const parseTime = (value) => {
+      if (!value.trim()) return null;
+      const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || Number(match[2]) > 59) return undefined;
+      let hour = Number(match[1]);
+      if (match[3].toUpperCase() === 'PM' && hour !== 12) hour += 12;
+      if (match[3].toUpperCase() === 'AM' && hour === 12) hour = 0;
+      return `${String(hour).padStart(2, '0')}:${match[2]}`;
+    };
+    const parsedCheckIn = parseTime(checkInTime);
+    const parsedCheckOut = parseTime(checkOutTime);
+    if (parsedCheckIn === undefined || parsedCheckOut === undefined) {
+      errorMsg = 'Enter time as hh:mm AM or hh:mm PM.';
+      renderAttendance(el); return;
+    }
+    const checkIn = parsedCheckIn ? new Date(`${attendanceDate}T${parsedCheckIn}:00`).toISOString() : null;
+    const checkOut = parsedCheckOut ? new Date(`${attendanceDate}T${parsedCheckOut}:00`).toISOString() : null;
 
     const { error } = await sb.rpc('set_attendance_status', {
       p_staff_id: staffId, p_work_date: attendanceDate, p_status: status,
