@@ -555,8 +555,8 @@ async function renderAttendance(el) {
       <td>${a.staff ? a.staff.full_name : ''}</td>
       <td>${a.sites ? a.sites.name : ''}</td>
       <td>${attendanceStatusBadge(a.status)}</td>
-      <td>${a.check_in ? new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-      <td>${a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+      <td>${a.check_in ? new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</td>
+      <td>${a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</td>
       <td>${a.total_hours != null ? a.total_hours + ' hrs' : '—'}</td>
       <td class="whitespace-nowrap">
         ${quickIcons.map(q => `<button class="quickStatusBtn mt-icon-btn edit" style="width:26px;height:26px;font-size:0.8rem;" data-staff="${a.staff_id}" data-status="${q.status}" data-checkin="${a.check_in || ''}" data-checkout="${a.check_out || ''}" title="${q.title}">${q.icon}</button>`).join('')}
