@@ -578,8 +578,22 @@ async function renderAttendance(el) {
           <option value="sick" ${attendanceStatus === 'sick' ? 'selected' : ''}>Sick</option>
           <option value="holiday" ${attendanceStatus === 'holiday' ? 'selected' : ''}>Holiday</option>
         </select>
-        <input id="a_checkin" type="text" inputmode="text" placeholder="Check-in (e.g. 08:30 AM)" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="a_checkout" type="text" inputmode="text" placeholder="Check-out (e.g. 05:15 PM)" class="border rounded-lg px-3 py-2 text-sm">
+        <div class="flex gap-1">
+          <input id="a_checkin_hour" type="number" min="1" max="12" placeholder="08" aria-label="Check-in hour" class="w-full border rounded-lg px-2 py-2 text-sm">
+          <span class="self-center">:</span>
+          <input id="a_checkin_minute" type="number" min="0" max="59" placeholder="00" aria-label="Check-in minute" class="w-full border rounded-lg px-2 py-2 text-sm">
+          <select id="a_checkin_ampm" aria-label="Check-in AM or PM" class="border rounded-lg px-2 py-2 text-sm">
+            <option value="AM">AM</option><option value="PM">PM</option>
+          </select>
+        </div>
+        <div class="flex gap-1">
+          <input id="a_checkout_hour" type="number" min="1" max="12" placeholder="05" aria-label="Check-out hour" class="w-full border rounded-lg px-2 py-2 text-sm">
+          <span class="self-center">:</span>
+          <input id="a_checkout_minute" type="number" min="0" max="59" placeholder="00" aria-label="Check-out minute" class="w-full border rounded-lg px-2 py-2 text-sm">
+          <select id="a_checkout_ampm" aria-label="Check-out AM or PM" class="border rounded-lg px-2 py-2 text-sm">
+            <option value="AM">AM</option><option value="PM">PM</option>
+          </select>
+        </div>
       </div>
       ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
       <button id="saveAttendanceBtn" type="button" class="mt-btn-primary">Save Status</button>
@@ -603,24 +617,27 @@ async function renderAttendance(el) {
     errorMsg = '';
     const staffId = document.getElementById('a_staff').value;
     const status = document.getElementById('a_status').value;
-    const checkInTime = document.getElementById('a_checkin').value;
-    const checkOutTime = document.getElementById('a_checkout').value;
+    const checkInHour = document.getElementById('a_checkin_hour').value;
+    const checkInMinute = document.getElementById('a_checkin_minute').value;
+    const checkInAmPm = document.getElementById('a_checkin_ampm').value;
+    const checkOutHour = document.getElementById('a_checkout_hour').value;
+    const checkOutMinute = document.getElementById('a_checkout_minute').value;
+    const checkOutAmPm = document.getElementById('a_checkout_ampm').value;
 
     if (!staffId) { errorMsg = 'Choose a staff member.'; renderAttendance(el); return; }
 
-    const parseTime = (value) => {
-      if (!value.trim()) return null;
-      const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-      if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || Number(match[2]) > 59) return undefined;
-      let hour = Number(match[1]);
-      if (match[3].toUpperCase() === 'PM' && hour !== 12) hour += 12;
-      if (match[3].toUpperCase() === 'AM' && hour === 12) hour = 0;
-      return `${String(hour).padStart(2, '0')}:${match[2]}`;
+    const parseTime = (hourValue, minuteValue, amPm) => {
+      if (!hourValue && !minuteValue) return null;
+      const hour = Number(hourValue);
+      const minute = Number(minuteValue);
+      if (!hourValue || !minuteValue || hour < 1 || hour > 12 || minute < 0 || minute > 59) return undefined;
+      const hour24 = amPm === 'PM' && hour !== 12 ? hour + 12 : amPm === 'AM' && hour === 12 ? 0 : hour;
+      return `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     };
-    const parsedCheckIn = parseTime(checkInTime);
-    const parsedCheckOut = parseTime(checkOutTime);
+    const parsedCheckIn = parseTime(checkInHour, checkInMinute, checkInAmPm);
+    const parsedCheckOut = parseTime(checkOutHour, checkOutMinute, checkOutAmPm);
     if (parsedCheckIn === undefined || parsedCheckOut === undefined) {
-      errorMsg = 'Enter time as hh:mm AM or hh:mm PM.';
+      errorMsg = 'Enter a valid hour and minute, then choose AM or PM.';
       renderAttendance(el); return;
     }
     const checkIn = parsedCheckIn ? new Date(`${attendanceDate}T${parsedCheckIn}:00`).toISOString() : null;
