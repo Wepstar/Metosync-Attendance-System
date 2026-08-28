@@ -103,15 +103,17 @@ function renderNoCompany() {
 }
 
 function renderDashboard() {
+    const plan = myCompany.service_plan || 'both';
   const tabs = [
     { id: 'staff', label: 'Staff' },
     { id: 'sites', label: 'Sites' },
-    { id: 'attendance', label: 'Attendance' },
-    { id: 'payroll', label: 'Payroll' },
-    { id: 'payroll-history', label: 'Payroll History' },
+    plan !== 'payroll' ? { id: 'attendance', label: 'Attendance' } : null,
+    plan !== 'attendance' ? { id: 'payroll', label: 'Payroll' } : null,
+    plan !== 'attendance' ? { id: 'payroll-history', label: 'Payroll History' } : null,
     { id: 'settings', label: 'Settings' },
     { id: 'contact', label: 'Contact & Support' },
-  ];
+  ].filter(Boolean);
+
   app().innerHTML = `
     <div class="mt-header rounded-2xl px-5 py-4 flex justify-between items-center mb-4 mt-4">
       <div>
