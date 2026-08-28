@@ -223,10 +223,7 @@ async function renderSites(el) {
     const address = document.getElementById('siteAddress').value.trim();
     if (!country) { errorMsg = 'Country is required (Step 1).'; renderSites(el); return; }
     if (!name) { errorMsg = 'Site name is required (Step 2).'; renderSites(el); return; }
-    const { error } = await sb.from('sites').insert({
-      company_id: myProfile.company_id, name, country, address: address || null,
-      latitude: capturedLat, longitude: capturedLng
-    });
+        const { error } = await sb.rpc('add_site', { p_site: { name, country, address: address || null, latitude: capturedLat, longitude: capturedLng } });
     if (error) { errorMsg = error.message; renderSites(el); return; }
     capturedLat = null; capturedLng = null; gpsStatus = '';
     renderSites(el);
@@ -235,7 +232,7 @@ async function renderSites(el) {
   document.querySelectorAll('.deleteSiteBtn').forEach(btn => {
     btn.onclick = async () => {
       if (!confirm('Delete this site? This cannot be undone.')) return;
-      const { error } = await sb.from('sites').delete().eq('id', btn.dataset.id);
+      const { error } = await sb.rpc('delete_site', { p_site_id: btn.dataset.id });
       if (error) { errorMsg = error.message; }
       renderSites(el);
     };
