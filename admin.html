@@ -548,6 +548,9 @@ async function renderAttendance(el) {
   const yesterday = new Date(`${attendanceDate}T00:00:00`);
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayDate = yesterday.toISOString().slice(0, 10);
+  const trendStart = new Date(`${attendanceDate}T00:00:00`);
+  trendStart.setDate(trendStart.getDate() - 6);
+  const trendStartDate = trendStart.toISOString().slice(0, 10);
   const [{ data: staffData, error: staffErr }, { data: attData, error: attErr }] = await Promise.all([
     sb.from('staff').select('id, full_name, phone, sites(name, default_start_time)').order('full_name'),
     sb.from('attendance').select('*, staff(full_name, phone), sites(name, default_start_time)').eq('work_date', attendanceDate).order('created_at', { ascending: false })
@@ -556,6 +559,8 @@ async function renderAttendance(el) {
   if (attErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${attErr.message}</p>`; return; }
   const { data: yesterdayData, error: yesterdayErr } = await sb.from('attendance').select('status').eq('work_date', yesterdayDate);
   if (yesterdayErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${yesterdayErr.message}</p>`; return; }
+  const { data: trendData, error: trendErr } = await sb.from('attendance').select('work_date, status').eq('status', 'present').gte('work_date', trendStartDate).lte('work_date', attendanceDate);
+  if (trendErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${trendErr.message}</p>`; return; }
   staffList = staffData;
 
   const attendanceByStaff = new Map((attData || []).map(record => [record.staff_id, record]));
@@ -573,6 +578,19 @@ async function renderAttendance(el) {
     const arrow = todayCount > yesterdayCount ? '⬆️' : todayCount < yesterdayCount ? '⬇️' : '➡️';
     return `<div class="mt-card p-3"><div class="text-lg">${icon}</div><div class="text-xs capitalize">${status}</div><strong>${todayCount}</strong> <span class="text-xs text-gray-500">${arrow} ${yesterdayCount}</span></div>`;
   }).join('');
+  const trendDays = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(`${trendStartDate}T00:00:00`);
+    day.setDate(day.getDate() + index);
+    return day.toISOString().slice(0, 10);
+  });
+  const trendCounts = trendDays.map(day => (trendData || []).filter(record => record.work_date === day).length);
+  const maxTrendCount = Math.max(...trendCounts, 1);
+  const trendPoints = trendCounts.map((count, index) => {
+    const x = 10 + (index * 280 / 6);
+    const y = 50 - (count / maxTrendCount * 40);
+    return `${x},${y}`;
+  }).join(' ');
+  const trendChart = `<div class="mt-card p-3 mb-4 mt-fade-in"><div class="text-xs font-medium mb-1">Present trend, last 7 days</div><svg viewBox="0 0 300 60" width="300" height="60" role="img" aria-label="Present count trend for the last 7 days"><polyline points="${trendPoints}" fill="none" stroke="var(--mt-green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div>`;
 
   const staffOptions = staffList.map(s => `<option value="${s.id}">${s.full_name} — ${s.sites ? s.sites.name : 'no site'}</option>`).join('');
 
@@ -602,7 +620,7 @@ async function renderAttendance(el) {
       ? `<button type="button" class="cycleStatusBtn cursor-pointer transition-opacity hover:opacity-75" data-staff="${staff.id}" title="Change status">${attendanceStatusBadge(a.status)}${lateMinutes != null && lateMinutes > 0 ? `<span class="block text-xs text-red-600">${lateMinutes} min late</span>` : ''}</button>${absentReason}`
       : '<span class="text-xs text-gray-400">Not Marked</span>';
     return `
-    <tr id="att-${staff.id}">
+    <tr id="att-${staff.id}" data-staff-id="${staff.id}">
       <td><input type="checkbox" class="attendanceSelectCheck" data-staff="${staff.id}" ${!a || !a.check_in ? 'checked' : ''}></td>
       <td>${staff.full_name}<span class="block text-xs text-gray-400">${staff.phone || ''}</span></td>
       <td>${site ? site.name : ''}</td>
@@ -618,6 +636,7 @@ async function renderAttendance(el) {
   }
 
   el.innerHTML = `
+    ${trendChart}
     <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4 mt-fade-in">${trendCards}</div>
 
     <div class="mt-card p-4 mb-4 mt-fade-in">
@@ -655,7 +674,7 @@ async function renderAttendance(el) {
 
     <div class="mt-card p-4 overflow-x-auto mt-fade-in">
       <div class="flex justify-between items-center mb-2">
-        <h2 class="font-medium">Attendance for ${attendanceDate} <span class="text-xs font-normal text-green-600 align-middle">● live</span> <button id="refreshAttendanceBtn" type="button" class="text-sm" title="Refresh attendance">🔄</button></h2>
+        <h2 class="font-medium">Attendance for ${attendanceDate} <span class="text-xs font-normal text-green-600 align-middle">● live</span> <button id="refreshAttendanceBtn" type="button" class="text-sm" title="Refresh attendance">🔄</button> <button id="exportAttendanceBtn" type="button" class="text-sm" title="Export CSV">⬇️</button></h2>
         <p class="text-xs text-gray-400">Click an icon to change status instantly, or ⏱ to check someone out manually</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 mb-3">
@@ -664,6 +683,7 @@ async function renderAttendance(el) {
         </select>
         <button id="applyBulkAttendanceBtn" type="button" class="mt-btn-primary">Apply to Selected</button>
       </div>
+      <input id="attendanceSearch" type="search" placeholder="Search staff by name or phone..." class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
       <table class="w-full mt-table">
         <thead><tr><th><input type="checkbox" id="selectAllAttendance" aria-label="Select all staff"></th><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Quick Actions</th></tr></thead>
         <tbody id="attendanceBody">${staffList.map(attendanceRow).join('') || '<tr><td class="text-gray-400 py-4" colspan="8">No staff yet.</td></tr>'}</tbody>
@@ -678,9 +698,57 @@ async function renderAttendance(el) {
     renderAttendance(el);
   };
 
+  document.getElementById('attendanceSearch').oninput = (e) => {
+    const query = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('#attendanceBody tr[data-staff-id]').forEach(row => {
+      const staff = staffList.find(item => item.id === row.dataset.staffId);
+      const matches = !query || `${staff.full_name} ${staff.phone || ''}`.toLowerCase().includes(query);
+      row.classList.toggle('hidden', !matches);
+    });
+  };
+
+  document.getElementById('exportAttendanceBtn').onclick = async () => {
+    const csvEscape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const visibleStaff = staffList.filter(staff => {
+      const row = document.querySelector(`#att-${staff.id}`);
+      return row && !row.classList.contains('hidden');
+    });
+    const csvRows = [
+      ['Name', 'Phone', 'Site', 'Status', 'Check In', 'Check Out', 'Hours', 'Absent Reason'],
+      ...visibleStaff.map(staff => {
+        const record = attendanceByStaff.get(staff.id);
+        const site = record && record.sites ? record.sites : staff.sites;
+        return [
+          staff.full_name,
+          staff.phone || '',
+          site ? site.name : '',
+          record ? record.status : 'Not Marked',
+          record && record.check_in ? new Date(record.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '',
+          record && record.check_out ? new Date(record.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '',
+          record && record.total_hours != null ? `${record.total_hours} hrs` : '',
+          record && record.absent_reason ? record.absent_reason : ''
+        ].map(csvEscape).join(',');
+      })
+    ].join('\r\n');
+    const blob = new Blob([csvRows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `attendance-${attendanceDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    await sb.rpc('log_company_activity', {
+      p_action: 'attendance_csv_export',
+      p_detail: { work_date: attendanceDate, row_count: visibleStaff.length }
+    });
+  };
+
   document.querySelectorAll('.absentReasonBtn').forEach(btn => {
     btn.onclick = async () => {
-      const { error } = await sb.from('attendance').update({ absent_reason: btn.dataset.reason }).eq('id', btn.dataset.attendance);
+      const { error } = await sb.rpc('set_absent_reason', {
+        p_staff_id: btn.closest('tr').id.replace('att-', ''),
+        p_work_date: attendanceDate,
+        p_reason: btn.dataset.reason
+      });
       if (error) errorMsg = error.message;
       renderAttendance(el);
     };
