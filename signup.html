@@ -13,6 +13,7 @@
 <script>
 let errorMsg = '';
 const onboardingCode = sessionStorage.getItem('metosync_onboarding_code') || '';
+let companyLogoFile = null;
 
 function app() { return document.getElementById('app'); }
 
@@ -49,6 +50,10 @@ function render() {
       </div>
 
       <input id="companyName" autocomplete="off" placeholder="Organization Name *" class="w-full border rounded-xl px-4 py-3 mb-2">
+      <label class="block text-sm text-gray-600 mb-2">Organization Logo (optional)
+        <input id="companyLogo" type="file" accept="image/png,image/jpeg,image/webp" class="w-full border rounded-xl px-3 py-2 mt-1 text-sm">
+      </label>
+      <img id="companyLogoPreview" class="hidden w-20 h-20 object-contain rounded-lg border mb-2" alt="Organization logo preview">
       <input id="adminName" autocomplete="off" placeholder="Administrator Name (optional)" class="w-full border rounded-xl px-4 py-3 mb-2">
       <input id="position" autocomplete="off" placeholder="Position" class="w-full border rounded-xl px-4 py-3 mb-2">
 
@@ -85,6 +90,13 @@ function render() {
     </div>`;
 
   document.getElementById('signupBtn').onclick = signup;
+  document.getElementById('companyLogo').onchange = (e) => {
+    companyLogoFile = e.target.files[0] || null;
+    const preview = document.getElementById('companyLogoPreview');
+    if (!companyLogoFile) { preview.classList.add('hidden'); preview.removeAttribute('src'); return; }
+    preview.src = URL.createObjectURL(companyLogoFile);
+    preview.classList.remove('hidden');
+  };
 
   // Enter key submits the form from any field
   app().querySelectorAll('input, select').forEach(el => {
@@ -121,6 +133,9 @@ async function signup() {
   if (password.length < 6) { errorMsg = 'Password must be at least 6 characters.'; render(); return; }
   if (password !== password2) { errorMsg = 'Passwords do not match.'; render(); return; }
   if (!tcAccept) { errorMsg = 'You must accept the terms and conditions to continue.'; render(); return; }
+  if (companyLogoFile && companyLogoFile.size > 5 * 1024 * 1024) {
+    errorMsg = 'Organization logo must be 5 MB or smaller.'; render(); return;
+  }
 
   const signUpResult = await sb.auth.signUp({ email, password });
   if (signUpResult.error) { errorMsg = signUpResult.error.message; render(); return; }
@@ -139,6 +154,18 @@ async function signup() {
   });
 
   if (error) { errorMsg = error.message; render(); return; }
+
+  if (companyLogoFile) {
+    const companyId = data && (data.company_id || data.id || data.company?.id);
+    if (!companyId) { errorMsg = 'Company created, but its logo could not be linked.'; render(); return; }
+    const extension = companyLogoFile.name.split('.').pop().toLowerCase();
+    const logoPath = `${companyId}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await sb.storage.from('org-logos').upload(logoPath, companyLogoFile, { contentType: companyLogoFile.type, upsert: false });
+    if (uploadError) { errorMsg = `Company created, but logo upload failed: ${uploadError.message}`; render(); return; }
+    const { data: publicUrlData } = sb.storage.from('org-logos').getPublicUrl(logoPath);
+    const { error: logoSaveError } = await sb.from('companies').update({ logo_url: publicUrlData.publicUrl }).eq('id', companyId);
+    if (logoSaveError) { errorMsg = `Company created, but logo could not be saved: ${logoSaveError.message}`; render(); return; }
+  }
 
   sessionStorage.removeItem('metosync_onboarding_code');
   sessionStorage.setItem('metosync_new_company', JSON.stringify(data));
