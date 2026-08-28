@@ -135,14 +135,14 @@ function renderSection(section) {
 
 async function renderOwnerDashboard() {
   app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
-  const { data: companies, error } = await sb.rpc('platform_list_companies');
+  const [{ data: companies, error }, { data: stats, error: statsError }] = await Promise.all([
+    sb.rpc('platform_list_companies'),
+    sb.rpc('platform_registry_stats')
+  ]);
   if (error) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${error.message}</p>`; return; }
-
-  const totalCompanies = companies.length;
-  const totalStaff = companies.reduce((sum, c) => sum + Number(c.staff_count), 0);
-
-  const rows = companies.map(c => `
-    <tr><td>${c.name}</td><td class="font-mono text-xs">${c.org_code}</td><td>${c.staff_count}</td><td class="capitalize">${c.status}</td></tr>`).join('');
+  if (statsError) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${statsError.message}</p>`; return; }
+  const statsRow = Array.isArray(stats) ? stats[0] || {} : stats || {};
+  const companyCards = (companies || []).map(companyCardHtml).join('');
 
   app().innerHTML = `
     <div class="mt-fade-in">
@@ -150,20 +150,10 @@ async function renderOwnerDashboard() {
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🏛️ Owner Dashboard</h1>
         <button id="backBtn" class="text-sm text-gray-500">← Back</button>
       </div>
-      <div class="grid grid-cols-2 gap-3 mb-4">
-        <div class="mt-card p-4 text-center">
-          <p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${totalCompanies}</p>
-          <p class="text-xs text-gray-500">Companies</p>
-        </div>
-        <div class="mt-card p-4 text-center">
-          <p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${totalStaff}</p>
-          <p class="text-xs text-gray-500">Total Staff</p>
-        </div>
-      </div>
-      <div class="mt-card p-4 mb-4 overflow-x-auto">
-        <h2 class="font-medium mb-2 text-sm">Companies</h2>
-        <table class="w-full mt-table"><thead><tr><th>Name</th><th>Code</th><th>Staff</th><th>Status</th></tr></thead>
-          <tbody>${rows || '<tr><td class="text-gray-400" colspan="4">No companies yet.</td></tr>'}</tbody></table>
+      ${statsCardsHtml(statsRow)}
+      <div class="mt-card p-4 mb-4">
+        <div class="flex justify-between items-center gap-2 mb-3"><h2 class="font-medium text-sm">Companies</h2><input id="companySearch" type="search" placeholder="Search companies..." class="border rounded-lg px-3 py-2 text-sm"></div>
+        <div id="companyCards" class="space-y-2">${companyCards || '<p class="text-gray-400 text-sm">No companies yet.</p>'}</div>
       </div>
       <div class="mt-card p-4 mb-4">
         <h2 class="font-medium mb-2 text-sm">Invite a Platform Admin</h2>
@@ -178,6 +168,7 @@ async function renderOwnerDashboard() {
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  wireCompanyInteractions(companies || []);
   document.getElementById('genInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_platform_invite');
     if (!error) generatedInviteCode = data;
@@ -188,6 +179,59 @@ async function renderOwnerDashboard() {
     if (!error) generatedCompanyCode = data;
     renderOwnerDashboard();
   };
+}
+
+function metricValue(row, ...keys) {
+  const key = keys.find(candidate => row && row[candidate] !== undefined && row[candidate] !== null);
+  return key ? row[key] : null;
+}
+
+function statsCardsHtml(stats) {
+  const metrics = [
+    [['companies', 'total_companies'], 'Companies'],
+    [['total_staff', 'staff'], 'Total Staff'],
+    [['sites', 'total_sites'], 'Sites'],
+    [['new_this_month', 'new_companies_this_month'], 'New This Month']
+  ].filter(([keys]) => metricValue(stats, ...keys) !== null);
+  return `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">${metrics.map(([keys, label]) => `<div class="mt-card p-3 text-center"><p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${metricValue(stats, ...keys)}</p><p class="text-xs text-gray-500">${label}</p></div>`).join('')}</div>`;
+}
+
+function companyCardHtml(company) {
+  const initial = (company.name || '?').trim().charAt(0).toUpperCase() || '?';
+  const statusClass = company.status === 'active' ? 'active' : company.status === 'inactive' ? 'inactive' : 'pending';
+  return `<div class="companyCard flex items-center gap-3 border rounded-xl p-3" data-name="${(company.name || '').toLowerCase()}" data-code="${(company.org_code || '').toLowerCase()}">
+    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style="background: var(--mt-green-dark);">${initial}</div>
+    <div class="min-w-0 flex-1"><p class="font-medium truncate">${company.name || ''}</p><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p><p class="text-xs text-gray-500">${metricValue(company, 'staff_count') !== null ? `Staff: ${metricValue(company, 'staff_count')}` : ''}${metricValue(company, 'site_count', 'sites_count') !== null ? ` · Sites: ${metricValue(company, 'site_count', 'sites_count')}` : ''}</p></div>
+    <span class="mt-badge ${statusClass}">${company.status || ''}</span><button type="button" class="viewCompanyBtn mt-btn-outline text-xs" data-company-id="${company.id}">View Details</button>
+  </div>`;
+}
+
+function wireCompanyInteractions(companies) {
+  const search = document.getElementById('companySearch');
+  search.oninput = () => { const query = search.value.trim().toLowerCase(); document.querySelectorAll('.companyCard').forEach(card => card.classList.toggle('hidden', query && !`${card.dataset.name} ${card.dataset.code}`.includes(query))); };
+  document.querySelectorAll('.viewCompanyBtn').forEach(button => { button.onclick = () => openCompanyDetails(button.dataset.companyId); });
+}
+
+function detailMetric(label, value) {
+  return value === null ? '' : `<p class="text-xs">${label}: ${value}</p>`;
+}
+
+async function openCompanyDetails(companyId) {
+  const [{ data: detail, error: detailError }, { data: activity, error: activityError }] = await Promise.all([
+    sb.rpc('platform_get_company_detail', { p_company_id: companyId }),
+    sb.rpc('registry_list_company_activity', { p_company_id: companyId })
+  ]);
+  if (detailError || activityError) { alert((detailError || activityError).message); return; }
+  const company = Array.isArray(detail) ? detail[0] || {} : detail || {};
+  const activityRows = (activity || []).map(item => `<tr class="border-b"><td class="py-2 px-3">${item.category || ''}</td><td class="py-2 px-3">${item.action || ''}</td><td class="py-2 px-3">${item.detail || ''}</td><td class="py-2 px-3 text-xs text-gray-400">${item.performed_at ? new Date(item.performed_at).toLocaleString() : ''}</td></tr>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'companyDetailModal'; modal.className = 'fixed inset-0 bg-black/40 z-50 p-4 overflow-y-auto';
+  modal.innerHTML = `<div class="mt-card max-w-2xl mx-auto mt-8 p-5"><div class="flex justify-between items-start mb-4"><div><h2 class="text-lg font-bold" style="color: var(--mt-green-dark);">${company.name || ''}</h2><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p></div><button id="closeCompanyDetail" type="button" class="mt-btn-outline">Close</button></div>
+    ${company.status !== undefined && company.status !== null ? `<p class="text-sm mb-4">Status: <span class="mt-badge ${company.status === 'active' ? 'active' : company.status === 'inactive' ? 'inactive' : 'pending'}">${company.status}</span></p>` : ''}
+    <div class="grid grid-cols-2 gap-2 mb-4"><div><p class="text-xs text-gray-500">Admin</p><p class="text-sm">${company.admin_name || ''}${company.admin_mobile ? ` · ${company.admin_mobile}` : ''}</p></div><div><p class="text-xs text-gray-500">Billing Email</p><p class="text-sm">${company.billing_email || ''}</p></div></div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4"><div class="mt-card p-3"><p class="font-medium text-sm">Staff</p>${detailMetric('Total', metricValue(company, 'staff_total', 'total_staff'))}${detailMetric('Active', metricValue(company, 'staff_active'))}${detailMetric('On leave', metricValue(company, 'staff_on_leave'))}${detailMetric('Inactive', metricValue(company, 'staff_inactive'))}</div><div class="mt-card p-3"><p class="font-medium text-sm">Sites</p>${detailMetric('Total', metricValue(company, 'sites_total', 'total_sites'))}${detailMetric('With GPS', metricValue(company, 'sites_with_gps'))}${detailMetric('Without GPS', metricValue(company, 'sites_without_gps'))}</div><div class="mt-card p-3"><p class="font-medium text-sm">Attendance Last 30 Days</p>${detailMetric('Present', metricValue(company, 'attendance_present'))}${detailMetric('Late', metricValue(company, 'attendance_late'))}${detailMetric('Absent', metricValue(company, 'attendance_absent'))}</div></div>
+    <h3 class="font-medium text-sm mb-2">Company Audit Trail</h3><div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Type</th><th>Action</th><th>Detail</th><th>When</th></tr></thead><tbody>${activityRows || '<tr><td class="text-gray-400" colspan="4">No activity yet.</td></tr>'}</tbody></table></div></div>`;
+  document.body.appendChild(modal); document.getElementById('closeCompanyDetail').onclick = () => modal.remove();
 }
 
 function staffChangeRow(c, isNew) {
@@ -203,7 +247,18 @@ function staffChangeRow(c, isNew) {
 
 async function renderRegistry() {
   app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
-  const { data: changes, error } = await sb.rpc('registry_list_all_activity');
+  const [{ data: companies, error }, { data: changes, error: changesError }, { data: stats, error: statsError }] = await Promise.all([
+    sb.rpc('platform_list_companies'),
+    sb.rpc('registry_list_all_activity'),
+    sb.rpc('platform_registry_stats')
+  ]);
+  if (error || changesError || statsError) {
+    const failure = error || changesError || statsError;
+    app().innerHTML = `<p class="text-red-600 text-center mt-10">${failure.message}</p>`;
+    return;
+  }
+  const statsRow = Array.isArray(stats) ? stats[0] || {} : stats || {};
+  const companyCards = (companies || []).map(companyCardHtml).join('');
 
   const catStyle = { staff: 'bg-blue-100 text-blue-800', attendance: 'bg-green-100 text-green-800', activity: 'bg-purple-100 text-purple-800' };
   const rowsHtml = (changes || []).map(c => `
@@ -221,6 +276,11 @@ async function renderRegistry() {
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">📋 Registry <span class="text-xs font-normal text-green-600 align-middle">● live</span></h1>
         <button id="backBtn" class="text-sm text-gray-500">← Back</button>
       </div>
+      ${statsCardsHtml(statsRow)}
+      <div class="mt-card p-4 mb-4">
+        <div class="flex justify-between items-center gap-2 mb-3"><h2 class="font-medium text-sm">Companies</h2><input id="companySearch" type="search" placeholder="Search companies..." class="border rounded-lg px-3 py-2 text-sm"></div>
+        <div id="companyCards" class="space-y-2">${companyCards || '<p class="text-gray-400 text-sm">No companies yet.</p>'}</div>
+      </div>
       <div class="mt-card p-4 mb-4">
         <h2 class="font-medium mb-2 text-sm">Generate New Company Invite Code</h2>
         <button id="genCompanyInviteBtn" class="mt-btn-primary">Generate Code</button>
@@ -234,6 +294,7 @@ async function renderRegistry() {
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  wireCompanyInteractions(companies || []);
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_onboarding_invite');
     if (!error) generatedCompanyCode = data;
