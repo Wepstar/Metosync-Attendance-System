@@ -158,11 +158,11 @@ async function signup() {
   if (companyLogoFile) {
     const companyId = data && (data.company_id || data.id || data.company?.id);
     if (!companyId) { errorMsg = 'Company created, but its logo could not be linked.'; render(); return; }
-    const extension = companyLogoFile.name.split('.').pop().toLowerCase();
-    const logoPath = `${companyId}/${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await sb.storage.from('org-logos').upload(logoPath, companyLogoFile, { contentType: companyLogoFile.type, upsert: false });
+    const extension = companyLogoFile.type === 'image/png' ? 'png' : companyLogoFile.type === 'image/webp' ? 'webp' : 'jpg';
+    const logoPath = `${companyId}/logo.${extension}`;
+    const { error: uploadError } = await sb.storage.from('org-logo').upload(logoPath, companyLogoFile, { contentType: companyLogoFile.type, upsert: true });
     if (uploadError) { errorMsg = `Company created, but logo upload failed: ${uploadError.message}`; render(); return; }
-    const { data: publicUrlData } = sb.storage.from('org-logos').getPublicUrl(logoPath);
+    const { data: publicUrlData } = sb.storage.from('org-logo').getPublicUrl(logoPath);
     const { error: logoSaveError } = await sb.from('companies').update({ logo_url: publicUrlData.publicUrl }).eq('id', companyId);
     if (logoSaveError) { errorMsg = `Company created, but logo could not be saved: ${logoSaveError.message}`; render(); return; }
   }
