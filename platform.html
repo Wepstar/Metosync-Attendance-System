@@ -212,6 +212,12 @@ function metricValue(row, ...keys) {
   return key ? row[key] : null;
 }
 
+function companyLogoHtml(company, size = 'w-10 h-10') {
+  return company.logo_url
+    ? `<img src="${company.logo_url}" alt="${company.name || 'Company'} logo" class="${size} rounded-xl object-contain bg-white p-1 border" loading="lazy">`
+    : `<div class="${size} rounded-full flex items-center justify-center text-white font-bold" style="background: var(--mt-green-dark);">${(company.name || '?').trim().charAt(0).toUpperCase() || '?'}</div>`;
+}
+
 function statsCardsHtml(stats) {
   const metrics = [
     [['companies', 'total_companies'], 'Companies', '#2563eb'],
@@ -224,10 +230,9 @@ function statsCardsHtml(stats) {
 
 function companyCardHtml(company) {
   const companyId = company.id || company.company_id;
-  const initial = (company.name || '?').trim().charAt(0).toUpperCase() || '?';
   const statusClass = company.status === 'active' ? 'active' : company.status === 'inactive' ? 'inactive' : 'pending';
   return `<div class="companyCard flex items-center gap-3 border rounded-xl p-3" data-name="${(company.name || '').toLowerCase()}" data-code="${(company.org_code || '').toLowerCase()}">
-    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style="background: var(--mt-green-dark);">${initial}</div>
+    ${companyLogoHtml(company)}
     <div class="min-w-0 flex-1"><p class="font-medium truncate">${company.name || ''}</p><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p><p class="text-xs text-gray-500">${metricValue(company, 'staff_count') !== null ? `Staff: ${metricValue(company, 'staff_count')}` : ''}${metricValue(company, 'site_count', 'sites_count') !== null ? ` · Sites: ${metricValue(company, 'site_count', 'sites_count')}` : ''}</p></div>
     <span class="mt-badge ${statusClass}">${company.status || ''}</span><button type="button" class="viewCompanyBtn mt-btn-outline text-xs" data-company-id="${companyId || ''}" ${companyId ? '' : 'disabled'}>View Details</button>
   </div>`;
@@ -257,7 +262,7 @@ async function openCompanyDetails(companyId, ownerDashboard = false) {
   const moderationHtml = ownerDashboard && state.role === 'owner' ? `<div class="mt-card p-3 mt-5"><p class="font-medium text-sm mb-2">Company Moderation</p><label class="block text-xs text-gray-500 mb-1" for="companyModerationReason">Reason (recorded on file)</label><input id="companyModerationReason" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mb-3"><div class="flex flex-wrap gap-2">${company.status !== 'active' ? '<button id="reactivateCompanyBtn" type="button" class="mt-btn-primary">Reactivate</button>' : ''}${company.status !== 'closed' ? '<button id="closeCompanyBtn" type="button" class="mt-btn-outline" style="color:#4b5563;border-color:#9ca3af;">Close Company</button>' : ''}${company.status !== 'blocked' ? '<button id="blockCompanyBtn" type="button" class="mt-btn-danger-outline">Block Company</button>' : ''}</div><div class="border-t mt-3 pt-3"><button id="deleteCompanyBtn" type="button" class="mt-btn-danger-outline">Delete Permanently</button></div><p id="companyModerationError" class="text-red-600 text-sm mt-2"></p></div>` : '';
   const modal = document.createElement('div');
   modal.id = 'companyDetailModal'; modal.className = 'fixed inset-0 bg-black/40 z-50 p-4 overflow-y-auto';
-  modal.innerHTML = `<div class="mt-card max-w-2xl mx-auto mt-8 p-5"><div class="flex justify-between items-start mb-4"><div><h2 class="text-lg font-bold" style="color: var(--mt-green-dark);">${company.name || ''}</h2><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p></div><button id="closeCompanyDetail" type="button" class="mt-btn-outline">Close</button></div>
+  modal.innerHTML = `<div class="mt-card max-w-2xl mx-auto mt-8 p-5"><div class="flex justify-between items-start mb-4"><div class="flex items-center gap-3">${companyLogoHtml(company, 'w-12 h-12')}<div><h2 class="text-lg font-bold" style="color: var(--mt-green-dark);">${company.name || ''}</h2><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p></div></div><button id="closeCompanyDetail" type="button" class="mt-btn-outline">Close</button></div>
     ${company.status !== undefined && company.status !== null ? `<p class="text-sm mb-4">Status: <span class="mt-badge ${company.status === 'active' ? 'active' : company.status === 'inactive' ? 'inactive' : 'pending'}">${company.status}</span></p>` : ''}
     <div class="grid grid-cols-2 gap-2 mb-4"><div><p class="text-xs text-gray-500">Admin</p><p class="text-sm">${company.admin_name || ''}${company.admin_mobile ? ` · ${company.admin_mobile}` : ''}</p></div><div><p class="text-xs text-gray-500">Billing Email</p><p class="text-sm">${company.billing_email || ''}</p></div></div>
     ${servicePlanHtml}
@@ -325,11 +330,12 @@ async function renderRegistry() {
   }
   const statsRow = Array.isArray(stats) ? stats[0] || {} : stats || {};
   const companyCards = (companies || []).map(companyCardHtml).join('');
+  const companyByName = new Map((companies || []).map(company => [company.name, company]));
 
   const catStyle = { staff: 'bg-blue-100 text-blue-800', attendance: 'bg-green-100 text-green-800', activity: 'bg-purple-100 text-purple-800' };
   const rowsHtml = (changes || []).map(c => `
     <tr id="chg-${c.id}">
-      <td>${c.company_name}</td>
+      <td><div class="flex items-center gap-2">${companyLogoHtml(companyByName.get(c.company_name) || { name: c.company_name })}<span>${c.company_name}</span></div></td>
       <td><span class="mt-badge" style="background:transparent;" class="px-2 py-0.5 rounded-full text-xs font-medium ${catStyle[c.category] || 'bg-gray-100 text-gray-800'}">${c.category}</span></td>
       <td class="capitalize">${c.action}</td>
       <td class="text-xs">${c.detail || ''}</td>
