@@ -147,8 +147,100 @@ async function renderTabContent() {
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
+  if (activeTab === 'payroll') return renderPayroll(el);
 
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
+}
+
+function payrollValue(data, ...keys) {
+  const source = Array.isArray(data) ? data[0] : data;
+  const key = keys.find(candidate => source && source[candidate] !== undefined && source[candidate] !== null);
+  return key ? source[key] : null;
+}
+
+function formatPayrollDate(value) {
+  if (!value) return '';
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function payrollPreviewHtml(preview, currency) {
+  if (!preview) return '<span class="text-xs text-gray-400">Enter days to preview pay.</span>';
+  const gross = payrollValue(preview, 'gross_pay', 'gross') ?? 0;
+  const deductions = payrollValue(preview, 'total_deductions', 'deductions') ?? 0;
+  const allowances = payrollValue(preview, 'total_allowances', 'allowances') ?? 0;
+  const net = payrollValue(preview, 'net_pay', 'net') ?? 0;
+  return `<span class="text-xs">Gross: ${currency || ''} ${Number(gross).toFixed(2)} · Deductions: ${currency || ''} ${Number(deductions).toFixed(2)} · Allowances: ${currency || ''} ${Number(allowances).toFixed(2)} · Net: ${currency || ''} ${Number(net).toFixed(2)}</span>`;
+}
+
+async function renderPayroll(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll…</p>`;
+  const { data: periods, error: periodError } = await sb.from('payroll_periods').select('*').eq('company_id', myProfile.company_id).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
+  if (periodError) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${periodError.message}</p>`; return; }
+  const period = periods && periods[0];
+
+  if (!period) {
+    el.innerHTML = `<div class="mt-card p-5 mt-fade-in"><h2 class="font-medium mb-3">Start New Payroll Period</h2><div class="grid grid-cols-2 gap-2 mb-3"><label class="text-sm">Period Start<input id="payrollPeriodStart" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label><label class="text-sm">Period End<input id="payrollPeriodEnd" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label></div><p id="payrollPeriodError" class="text-red-600 text-sm mb-2"></p><button id="startPayrollPeriodBtn" type="button" class="mt-btn-primary">Start New Payroll Period</button></div>`;
+    document.getElementById('startPayrollPeriodBtn').onclick = async () => {
+      const start = document.getElementById('payrollPeriodStart').value;
+      const end = document.getElementById('payrollPeriodEnd').value;
+      const errorElement = document.getElementById('payrollPeriodError');
+      if (!start || !end) { errorElement.textContent = 'Choose a start and end date.'; return; }
+      const { error } = await sb.from('payroll_periods').insert({ company_id: myProfile.company_id, period_start: start, period_end: end });
+      if (error) { errorElement.textContent = error.message; return; }
+      renderPayroll(el);
+    };
+    return;
+  }
+
+  const [{ data: payrollStaff, error: staffError }, { data: entries, error: entriesError }] = await Promise.all([
+    sb.from('staff').select('id, full_name, phone, currency, weekday_rate, weekend_rate, monthly_salary, sites(name)').eq('company_id', myProfile.company_id).order('full_name'),
+    sb.from('payroll_entries').select('*').eq('payroll_period_id', period.id)
+  ]);
+  if (staffError || entriesError) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${(staffError || entriesError).message}</p>`; return; }
+  const entryByStaff = new Map((entries || []).map(entry => [entry.staff_id, entry]));
+  const staffRows = (payrollStaff || []).map(staff => {
+    const entry = entryByStaff.get(staff.id) || {};
+    return `<div class="payrollStaffRow border-b py-4" data-staff-id="${staff.id}" data-currency="${staff.currency || ''}"><div class="flex flex-wrap justify-between gap-3"><div class="min-w-[12rem] flex-1"><p class="font-medium">${staff.full_name}</p><p class="text-xs text-gray-500">${staff.sites ? staff.sites.name : 'No site assigned'}${staff.currency ? ` · ${staff.currency}` : ''}</p><p class="payrollWarning text-xs text-amber-700 mt-1">${staff.sites ? '' : 'Warning: no site assigned.'}</p></div><label class="text-xs">Weekday Days<input class="weekdayDays block w-24 border rounded-lg px-2 py-2 mt-1 text-sm" type="number" min="0" step="1" value="${entry.weekday_days || 0}"></label><label class="text-xs">Weekend Days<input class="weekendDays block w-24 border rounded-lg px-2 py-2 mt-1 text-sm" type="number" min="0" step="1" value="${entry.weekend_days || 0}"></label><button type="button" class="savePayrollEntryBtn mt-btn-primary self-end">Save</button></div><p class="payrollPreview text-xs text-gray-500 mt-2">Enter days to preview pay.</p><p class="payrollSaveMessage text-sm mt-1"></p></div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="mt-card p-5 mt-fade-in"><div class="flex justify-between items-center gap-2 mb-4"><div><h2 class="font-medium">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} <span class="text-sm text-gray-500">(Draft)</span></h2></div></div><div id="payrollStaffList">${staffRows || '<p class="text-gray-400">No staff yet.</p>'}</div><p id="closePayrollError" class="text-red-600 text-sm mt-3"></p><button id="closePayrollBtn" type="button" class="mt-btn-danger-outline mt-3">Close Payroll Period</button></div>`;
+
+  const updatePreview = async (row) => {
+    const staffId = row.dataset.staffId;
+    const weekdayDays = row.querySelector('.weekdayDays').value || 0;
+    const weekendDays = row.querySelector('.weekendDays').value || 0;
+    const previewElement = row.querySelector('.payrollPreview');
+    const warningElement = row.querySelector('.payrollWarning');
+    previewElement.textContent = 'Calculating…';
+    const { data, error } = await sb.rpc('preview_payroll_entry', { p_staff_id: staffId, p_weekday_days: Number(weekdayDays), p_weekend_days: Number(weekendDays) });
+    if (error) { previewElement.textContent = ''; warningElement.textContent = `Warning: ${error.message}`; return; }
+    const gross = payrollValue(data, 'gross_pay', 'gross');
+    if (gross === null || Number(gross) === 0) warningElement.textContent = 'Warning: payroll rates may be missing or incomplete.';
+    previewElement.innerHTML = payrollPreviewHtml(data, row.dataset.currency);
+  };
+
+  document.querySelectorAll('.payrollStaffRow').forEach(row => {
+    row.querySelectorAll('.weekdayDays, .weekendDays').forEach(input => {
+      input.onchange = () => updatePreview(row);
+      input.onblur = () => updatePreview(row);
+    });
+    updatePreview(row);
+    row.querySelector('.savePayrollEntryBtn').onclick = async () => {
+      const message = row.querySelector('.payrollSaveMessage');
+      message.textContent = '';
+      const { error } = await sb.rpc('save_payroll_entry', { p_payroll_period_id: period.id, p_staff_id: row.dataset.staffId, p_weekday_days: Number(row.querySelector('.weekdayDays').value || 0), p_weekend_days: Number(row.querySelector('.weekendDays').value || 0) });
+      if (error) { message.className = 'payrollSaveMessage text-red-600 text-sm mt-1'; message.textContent = error.message; return; }
+      message.className = 'payrollSaveMessage mt-badge active';
+      message.textContent = '✓ Saved';
+    };
+  });
+
+  document.getElementById('closePayrollBtn').onclick = async () => {
+    if (!confirm('Close this payroll period? This locks the period and prevents further changes.')) return;
+    const { error } = await sb.rpc('close_payroll_period', { p_payroll_period_id: period.id });
+    if (error) { document.getElementById('closePayrollError').textContent = error.message; return; }
+    renderPayroll(el);
+  };
 }
 
 // ===== SITES =====
