@@ -253,7 +253,7 @@ async function wireGeneralPayroll(el) {
       if (error || current.status !== 'draft') { row.querySelector('.payrollRowMessage').textContent = error ? error.message : 'Only draft periods can be edited.'; return; }
       const entry = payrollState.entries.find(item => item.staff_id === row.dataset.staffId);
       if (!entry) return;
-      const { error: deleteError } = await sb.from('payroll_entries').delete().eq('id', entry.id);
+      const { error: deleteError } = await sb.rpc('delete_payroll_entry', { p_entry_id: entry.id });
       if (deleteError) row.querySelector('.payrollRowMessage').textContent = deleteError.message; else renderPayroll(el);
     };
     previewPayrollRow(row);
