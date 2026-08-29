@@ -152,96 +152,150 @@ async function renderTabContent() {
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
 }
 
+let payrollSubTab = 'general';
+let payrollState = { staff: [], entries: [], deductions: [], period: null, previews: new Map() };
+
 function payrollValue(data, ...keys) {
   const source = Array.isArray(data) ? data[0] : data;
-  const key = keys.find(candidate => source && source[candidate] !== undefined && source[candidate] !== null);
+  const key = keys.find(candidate => candidate && source && source[candidate] !== undefined && source[candidate] !== null);
   return key ? source[key] : null;
 }
 
 function formatPayrollDate(value) {
-  if (!value) return '';
-  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return value ? new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+}
+
+function payrollMoney(value, currency) {
+  return `${currency || ''} ${Number(value || 0).toFixed(2)}`.trim();
 }
 
 function payrollPreviewHtml(preview, currency) {
-  if (!preview) return '<span class="text-xs text-gray-400">Enter days to preview pay.</span>';
-  const gross = payrollValue(preview, 'gross_pay', 'gross') ?? 0;
-  const deductions = payrollValue(preview, 'total_deductions', 'deductions') ?? 0;
-  const allowances = payrollValue(preview, 'total_allowances', 'allowances') ?? 0;
-  const net = payrollValue(preview, 'net_pay', 'net') ?? 0;
-  return `<span class="text-xs">Gross: ${currency || ''} ${Number(gross).toFixed(2)} · Deductions: ${currency || ''} ${Number(deductions).toFixed(2)} · Allowances: ${currency || ''} ${Number(allowances).toFixed(2)} · Net: ${currency || ''} ${Number(net).toFixed(2)}</span>`;
+  if (!preview) return '<span class="text-xs text-gray-400">No preview yet.</span>';
+  return `<span class="text-xs">Gross: ${payrollMoney(payrollValue(preview, 'gross_pay', 'gross'), currency)} · Deductions: ${payrollMoney(payrollValue(preview, 'total_deductions', 'deductions'), currency)} · Net: ${payrollMoney(payrollValue(preview, 'net_pay', 'net'), currency)}</span>`;
+}
+
+function payrollSubTabsHtml() {
+  return `<div class="flex flex-wrap gap-1 mb-4 mt-card p-1">${[['general', 'General Payroll'], ['individual', 'Individual Payroll'], ['taxes', 'Taxes & Incentives']].map(([id, label]) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`).join('')}</div>`;
+}
+
+async function loadPayrollContext() {
+  const { data: periods, error: periodError } = await sb.from('payroll_periods').select('*').eq('company_id', myProfile.company_id).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
+  if (periodError) throw periodError;
+  const period = periods && periods[0];
+  if (!period) return { period: null, staff: [], entries: [], deductions: [] };
+  const [{ data: staff, error: staffError }, { data: entries, error: entryError }, { data: deductions, error: deductionError }] = await Promise.all([
+    sb.from('staff').select('id, full_name, phone, currency, weekday_rate, weekend_rate, monthly_salary, sites(name)').eq('company_id', myProfile.company_id).order('full_name'),
+    sb.from('payroll_entries').select('*').eq('payroll_period_id', period.id),
+    sb.from('deduction_types').select('*').or(`company_id.eq.${myProfile.company_id},company_id.is.null`).order('name')
+  ]);
+  if (staffError || entryError || deductionError) throw staffError || entryError || deductionError;
+  return { period, staff: staff || [], entries: entries || [], deductions: deductions || [] };
 }
 
 async function renderPayroll(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll…</p>`;
-  const { data: periods, error: periodError } = await sb.from('payroll_periods').select('*').eq('company_id', myProfile.company_id).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
-  if (periodError) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${periodError.message}</p>`; return; }
-  const period = periods && periods[0];
-
+  try { payrollState = { ...payrollState, ...await loadPayrollContext(), previews: new Map() }; } catch (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
+  const period = payrollState.period;
   if (!period) {
-    el.innerHTML = `<div class="mt-card p-5 mt-fade-in"><h2 class="font-medium mb-3">Start New Payroll Period</h2><div class="grid grid-cols-2 gap-2 mb-3"><label class="text-sm">Period Start<input id="payrollPeriodStart" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label><label class="text-sm">Period End<input id="payrollPeriodEnd" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label></div><p id="payrollPeriodError" class="text-red-600 text-sm mb-2"></p><button id="startPayrollPeriodBtn" type="button" class="mt-btn-primary">Start New Payroll Period</button></div>`;
+    el.innerHTML = `${payrollSubTabsHtml()}<div class="mt-card p-5 mt-fade-in"><h2 class="font-medium mb-3">Start New Payroll Period</h2><div class="grid grid-cols-2 gap-2 mb-3"><label class="text-sm">Period Start<input id="payrollPeriodStart" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label><label class="text-sm">Period End<input id="payrollPeriodEnd" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label></div><p id="payrollPeriodError" class="text-red-600 text-sm mb-2"></p><button id="startPayrollPeriodBtn" type="button" class="mt-btn-primary">Start New Payroll Period</button></div>`;
+    wirePayrollSubTabs(el);
     document.getElementById('startPayrollPeriodBtn').onclick = async () => {
-      const start = document.getElementById('payrollPeriodStart').value;
-      const end = document.getElementById('payrollPeriodEnd').value;
-      const errorElement = document.getElementById('payrollPeriodError');
-      if (!start || !end) { errorElement.textContent = 'Choose a start and end date.'; return; }
+      const start = document.getElementById('payrollPeriodStart').value, end = document.getElementById('payrollPeriodEnd').value;
+      if (!start || !end) { document.getElementById('payrollPeriodError').textContent = 'Choose a start and end date.'; return; }
       const { error } = await sb.from('payroll_periods').insert({ company_id: myProfile.company_id, period_start: start, period_end: end });
-      if (error) { errorElement.textContent = error.message; return; }
+      if (error) { document.getElementById('payrollPeriodError').textContent = error.message; return; }
       renderPayroll(el);
     };
     return;
   }
-
-  const [{ data: payrollStaff, error: staffError }, { data: entries, error: entriesError }] = await Promise.all([
-    sb.from('staff').select('id, full_name, phone, currency, weekday_rate, weekend_rate, monthly_salary, sites(name)').eq('company_id', myProfile.company_id).order('full_name'),
-    sb.from('payroll_entries').select('*').eq('payroll_period_id', period.id)
-  ]);
-  if (staffError || entriesError) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${(staffError || entriesError).message}</p>`; return; }
-  const entryByStaff = new Map((entries || []).map(entry => [entry.staff_id, entry]));
-  const staffRows = (payrollStaff || []).map(staff => {
-    const entry = entryByStaff.get(staff.id) || {};
-    return `<div class="payrollStaffRow border-b py-4" data-staff-id="${staff.id}" data-currency="${staff.currency || ''}"><div class="flex flex-wrap justify-between gap-3"><div class="min-w-[12rem] flex-1"><p class="font-medium">${staff.full_name}</p><p class="text-xs text-gray-500">${staff.sites ? staff.sites.name : 'No site assigned'}${staff.currency ? ` · ${staff.currency}` : ''}</p><p class="payrollWarning text-xs text-amber-700 mt-1">${staff.sites ? '' : 'Warning: no site assigned.'}</p></div><label class="text-xs">Weekday Days<input class="weekdayDays block w-24 border rounded-lg px-2 py-2 mt-1 text-sm" type="number" min="0" step="1" value="${entry.weekday_days || 0}"></label><label class="text-xs">Weekend Days<input class="weekendDays block w-24 border rounded-lg px-2 py-2 mt-1 text-sm" type="number" min="0" step="1" value="${entry.weekend_days || 0}"></label><button type="button" class="savePayrollEntryBtn mt-btn-primary self-end">Save</button></div><p class="payrollPreview text-xs text-gray-500 mt-2">Enter days to preview pay.</p><p class="payrollSaveMessage text-sm mt-1"></p></div>`;
-  }).join('');
-
-  el.innerHTML = `<div class="mt-card p-5 mt-fade-in"><div class="flex justify-between items-center gap-2 mb-4"><div><h2 class="font-medium">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} <span class="text-sm text-gray-500">(Draft)</span></h2></div></div><div id="payrollStaffList">${staffRows || '<p class="text-gray-400">No staff yet.</p>'}</div><p id="closePayrollError" class="text-red-600 text-sm mt-3"></p><button id="closePayrollBtn" type="button" class="mt-btn-danger-outline mt-3">Close Payroll Period</button></div>`;
-
-  const updatePreview = async (row) => {
-    const staffId = row.dataset.staffId;
-    const weekdayDays = row.querySelector('.weekdayDays').value || 0;
-    const weekendDays = row.querySelector('.weekendDays').value || 0;
-    const previewElement = row.querySelector('.payrollPreview');
-    const warningElement = row.querySelector('.payrollWarning');
-    previewElement.textContent = 'Calculating…';
-    const { data, error } = await sb.rpc('preview_payroll_entry', { p_staff_id: staffId, p_weekday_days: Number(weekdayDays), p_weekend_days: Number(weekendDays) });
-    if (error) { previewElement.textContent = ''; warningElement.textContent = `Warning: ${error.message}`; return; }
-    const gross = payrollValue(data, 'gross_pay', 'gross');
-    if (gross === null || Number(gross) === 0) warningElement.textContent = 'Warning: payroll rates may be missing or incomplete.';
-    previewElement.innerHTML = payrollPreviewHtml(data, row.dataset.currency);
-  };
-
-  document.querySelectorAll('.payrollStaffRow').forEach(row => {
-    row.querySelectorAll('.weekdayDays, .weekendDays').forEach(input => {
-      input.onchange = () => updatePreview(row);
-      input.onblur = () => updatePreview(row);
-    });
-    updatePreview(row);
-    row.querySelector('.savePayrollEntryBtn').onclick = async () => {
-      const message = row.querySelector('.payrollSaveMessage');
-      message.textContent = '';
-      const { error } = await sb.rpc('save_payroll_entry', { p_payroll_period_id: period.id, p_staff_id: row.dataset.staffId, p_weekday_days: Number(row.querySelector('.weekdayDays').value || 0), p_weekend_days: Number(row.querySelector('.weekendDays').value || 0) });
-      if (error) { message.className = 'payrollSaveMessage text-red-600 text-sm mt-1'; message.textContent = error.message; return; }
-      message.className = 'payrollSaveMessage mt-badge active';
-      message.textContent = '✓ Saved';
-    };
-  });
-
-  document.getElementById('closePayrollBtn').onclick = async () => {
-    if (!confirm('Close this payroll period? This locks the period and prevents further changes.')) return;
-    const { error } = await sb.rpc('close_payroll_period', { p_payroll_period_id: period.id });
-    if (error) { document.getElementById('closePayrollError').textContent = error.message; return; }
-    renderPayroll(el);
-  };
+  const content = payrollSubTab === 'individual' ? payrollIndividualHtml() : payrollSubTab === 'taxes' ? payrollTaxesHtml() : payrollGeneralHtml();
+  el.innerHTML = `${payrollSubTabsHtml()}<div class="text-sm text-gray-500 mb-3">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} (Draft)</div>${content}`;
+  wirePayrollSubTabs(el);
+  if (payrollSubTab === 'general') await wireGeneralPayroll(el);
+  if (payrollSubTab === 'individual') await wireIndividualPayroll(el);
+  if (payrollSubTab === 'taxes') wireTaxesPayroll(el);
 }
+
+function wirePayrollSubTabs(el) {
+  el.querySelectorAll('[data-payroll-tab]').forEach(button => { button.onclick = () => { payrollSubTab = button.dataset.payrollTab; renderPayroll(el); }; });
+}
+
+function payrollGeneralHtml() {
+  const entryByStaff = new Map(payrollState.entries.map(entry => [entry.staff_id, entry]));
+  const rows = payrollState.staff.map(staff => { const entry = entryByStaff.get(staff.id) || {}; return `<tr class="payrollGeneralRow" data-staff-id="${staff.id}" data-currency="${staff.currency || ''}"><td><input type="checkbox" class="payrollSelect"></td><td>${staff.full_name}<span class="block text-xs text-gray-500">${staff.currency || ''}</span></td><td><input class="weekdayDays w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${entry.weekday_days || 0}" readonly></td><td><input class="weekendDays w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${entry.weekend_days || 0}" readonly></td><td class="payrollGross">${entry.gross_pay !== undefined ? payrollMoney(entry.gross_pay, staff.currency) : '—'}</td><td class="payrollDeductions">${entry.total_deductions !== undefined ? payrollMoney(entry.total_deductions, staff.currency) : '—'}</td><td class="payrollNet">${entry.net_pay !== undefined ? payrollMoney(entry.net_pay, staff.currency) : '—'}</td><td><button type="button" class="editPayrollBtn mt-icon-btn edit" title="Edit days">✎</button><button type="button" class="deletePayrollBtn mt-icon-btn delete" title="Delete entry">🗑</button><span class="payrollRowMessage"></span></td></tr>`; }).join('');
+  return `<div class="mt-card p-5"><div class="flex flex-wrap gap-2 mb-3"><button id="applyAllPayrollBtn" type="button" class="mt-btn-outline">Apply All</button><button id="saveSelectedPayrollBtn" type="button" class="mt-btn-primary">Save</button><button id="undoPayrollBtn" type="button" class="mt-btn-outline">Undo</button><button id="payAllBtn" type="button" class="mt-btn-primary">Pay All</button></div><table class="w-full mt-table"><thead><tr><th><input id="selectAllPayroll" type="checkbox"></th><th>Staff Name</th><th>Weekday Days</th><th>Weekend Days</th><th>Total Pay</th><th>Deductions</th><th>Net Pay</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="text-gray-400">No staff yet.</td></tr>'}</tbody></table><div class="flex flex-wrap gap-2 mt-4"><button id="exportPayrollBtn" type="button" class="mt-btn-outline">⬇️ Export CSV</button><button id="emailPayrollBtn" type="button" class="mt-btn-outline">Export via Email</button><span class="text-xs text-gray-500 self-center">Pay All records payment outside the system.</span></div></div>`;
+}
+
+async function previewPayrollRow(row) {
+  const staffId = row.dataset.staffId, weekdayDays = Number(row.querySelector('.weekdayDays').value || 0), weekendDays = Number(row.querySelector('.weekendDays').value || 0);
+  const { data, error } = await sb.rpc('preview_payroll_entry', { p_staff_id: staffId, p_weekday_days: weekdayDays, p_weekend_days: weekendDays });
+  const message = row.querySelector('.payrollRowMessage');
+  if (error) { message.textContent = ` ${error.message}`; message.className = 'payrollRowMessage text-red-600 text-xs'; return; }
+  payrollState.previews.set(staffId, data);
+  row.querySelector('.payrollGross').textContent = payrollMoney(payrollValue(data, 'gross_pay', 'gross'), row.dataset.currency);
+  row.querySelector('.payrollDeductions').textContent = payrollMoney(payrollValue(data, 'total_deductions', 'deductions'), row.dataset.currency);
+  row.querySelector('.payrollNet').textContent = payrollMoney(payrollValue(data, 'net_pay', 'net'), row.dataset.currency);
+  if (Number(payrollValue(data, 'gross_pay', 'gross') || 0) === 0) message.textContent = ' Warning: rates may be missing.';
+}
+
+async function wireGeneralPayroll(el) {
+  const rows = [...el.querySelectorAll('.payrollGeneralRow')];
+  const checks = () => [...el.querySelectorAll('.payrollSelect')];
+  document.getElementById('selectAllPayroll').onchange = e => checks().forEach(check => { check.checked = e.target.checked; });
+  rows.forEach(row => {
+    row.querySelectorAll('.weekdayDays, .weekendDays').forEach(input => input.onchange = () => previewPayrollRow(row));
+    row.querySelector('.editPayrollBtn').onclick = () => row.querySelectorAll('input[type="number"]').forEach(input => { input.readOnly = !input.readOnly; });
+    row.querySelector('.deletePayrollBtn').onclick = async () => {
+      const { data: current, error } = await sb.from('payroll_periods').select('status').eq('id', payrollState.period.id).single();
+      if (error || current.status !== 'draft') { row.querySelector('.payrollRowMessage').textContent = error ? error.message : 'Only draft periods can be edited.'; return; }
+      const entry = payrollState.entries.find(item => item.staff_id === row.dataset.staffId);
+      if (!entry) return;
+      const { error: deleteError } = await sb.from('payroll_entries').delete().eq('id', entry.id);
+      if (deleteError) row.querySelector('.payrollRowMessage').textContent = deleteError.message; else renderPayroll(el);
+    };
+    previewPayrollRow(row);
+  });
+  document.getElementById('applyAllPayrollBtn').onclick = async () => { await Promise.all(checks().filter(check => check.checked).map(check => previewPayrollRow(check.closest('tr')))); };
+  document.getElementById('saveSelectedPayrollBtn').onclick = async () => { for (const check of checks().filter(item => item.checked)) { const row = check.closest('tr'); const { error } = await sb.rpc('save_payroll_entry', { p_payroll_period_id: payrollState.period.id, p_staff_id: row.dataset.staffId, p_weekday_days: Number(row.querySelector('.weekdayDays').value || 0), p_weekend_days: Number(row.querySelector('.weekendDays').value || 0) }); row.querySelector('.payrollRowMessage').textContent = error ? error.message : ' ✓ Saved'; } };
+  document.getElementById('undoPayrollBtn').onclick = () => renderPayroll(el);
+  document.getElementById('exportPayrollBtn').onclick = () => exportPayrollCsv(rows);
+  document.getElementById('emailPayrollBtn').onclick = () => emailPayrollSummary(rows);
+  document.getElementById('payAllBtn').onclick = () => showPayrollPaymentForm(el, checks().filter(check => check.checked).map(check => check.closest('tr')).filter(row => payrollState.entries.some(entry => entry.staff_id === row.dataset.staffId)));
+}
+
+function payrollIndividualHtml() {
+  return `<div class="mt-card p-5 max-w-xl"><h2 class="font-medium mb-3">Individual Payroll</h2><select id="individualPayrollStaff" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${payrollState.staff.map(staff => `<option value="${staff.id}">${staff.full_name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-2"><label class="text-sm">Weekday Days<input id="individualWeekdayDays" type="number" min="0" step="1" value="0" class="block w-full border rounded-lg px-3 py-2 mt-1"></label><label class="text-sm">Weekend Days<input id="individualWeekendDays" type="number" min="0" step="1" value="0" class="block w-full border rounded-lg px-3 py-2 mt-1"></label></div><p id="individualPayrollPreview" class="text-sm text-gray-600 mt-3">Enter days to preview pay.</p><p id="individualPayrollMessage" class="text-sm mt-2"></p><button id="saveIndividualPayrollBtn" type="button" class="mt-btn-primary mt-3">Save</button></div>`;
+}
+
+async function wireIndividualPayroll(el) {
+  const staffSelect = document.getElementById('individualPayrollStaff'), preview = async () => { const staff = payrollState.staff.find(item => item.id === staffSelect.value); const { data, error } = await sb.rpc('preview_payroll_entry', { p_staff_id: staff.id, p_weekday_days: Number(document.getElementById('individualWeekdayDays').value || 0), p_weekend_days: Number(document.getElementById('individualWeekendDays').value || 0) }); document.getElementById('individualPayrollPreview').textContent = error ? error.message : payrollPreviewHtml(data, staff.currency); };
+  staffSelect.onchange = preview; document.getElementById('individualWeekdayDays').onchange = preview; document.getElementById('individualWeekendDays').onchange = preview; preview();
+  document.getElementById('saveIndividualPayrollBtn').onclick = async () => { const { error } = await sb.rpc('save_payroll_entry', { p_payroll_period_id: payrollState.period.id, p_staff_id: staffSelect.value, p_weekday_days: Number(document.getElementById('individualWeekdayDays').value || 0), p_weekend_days: Number(document.getElementById('individualWeekendDays').value || 0) }); document.getElementById('individualPayrollMessage').textContent = error ? error.message : '✓ Saved'; };
+}
+
+function payrollTaxesHtml() {
+  const cards = payrollState.deductions.map(item => `<div class="border rounded-xl p-3"><p class="font-medium">${item.name}</p><p class="text-xs text-gray-500">${item.category || ''} · ${item.calc_method || item.calculation_method || ''}</p></div>`).join('');
+  return `<div class="mt-card p-5 mb-4"><h2 class="font-medium mb-3">Add New Tax/Allowance</h2><div class="grid grid-cols-2 gap-2"><input id="deductionName" placeholder="Name" class="border rounded-lg px-3 py-2 text-sm"><select id="deductionCategory" class="border rounded-lg px-3 py-2 text-sm"><option value="deduction">Deduction</option><option value="allowance">Allowance</option><option value="tax">Tax</option></select><select id="deductionMethod" class="border rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Amount</option><option value="percentage">Percentage</option><option value="tax_band">Tax Band</option></select><input id="deductionAmount" type="number" step="0.01" placeholder="Amount" class="border rounded-lg px-3 py-2 text-sm"></div><p id="deductionError" class="text-red-600 text-sm mt-2"></p><button id="addDeductionBtn" type="button" class="mt-btn-primary mt-3">Add New Tax/Allowance</button></div><div class="mt-card p-5 mb-4"><h2 class="font-medium mb-3">Available Taxes &amp; Incentives</h2><div class="grid gap-2">${cards || '<p class="text-gray-400">No deduction types found.</p>'}</div></div><div class="mt-card p-5"><h2 class="font-medium mb-3">Apply to Staff</h2><select id="applyDeductionType" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${payrollState.deductions.map(item => `<option value="${item.id}">${item.name}</option>`).join('')}</select><div class="grid gap-1 mb-3">${payrollState.staff.map(staff => `<label class="text-sm"><input type="checkbox" class="deductionStaff" value="${staff.id}"> ${staff.full_name}</label>`).join('')}</div><p id="applyDeductionError" class="text-red-600 text-sm"></p><button id="applyDeductionBtn" type="button" class="mt-btn-primary">Apply</button></div>`;
+}
+
+function wireTaxesPayroll(el) {
+  const method = document.getElementById('deductionMethod');
+  const amount = document.getElementById('deductionAmount');
+  const toggleAmount = () => { const visible = method.value !== 'tax_band'; amount.classList.toggle('hidden', !visible); amount.required = visible; };
+  method.onchange = toggleAmount; toggleAmount();
+  document.getElementById('addDeductionBtn').onclick = async () => { const { error } = await sb.rpc('add_deduction_type', { p_name: document.getElementById('deductionName').value.trim(), p_category: document.getElementById('deductionCategory').value, p_calc_method: method.value, p_amount: visibleAmount(method, amount) }); if (error) document.getElementById('deductionError').textContent = error.message; else renderPayroll(el); };
+  document.getElementById('applyDeductionBtn').onclick = async () => { const { error } = await sb.rpc('apply_deduction_to_staff', { p_staff_ids: [...document.querySelectorAll('.deductionStaff:checked')].map(input => input.value), p_deduction_type_id: document.getElementById('applyDeductionType').value }); if (error) document.getElementById('applyDeductionError').textContent = error.message; };
+}
+
+function visibleAmount(method, amount) { return method.value === 'tax_band' ? null : Number(amount.value || 0); }
+
+function csvCell(value) { return `"${String(value ?? '').replace(/"/g, '""')}"`; }
+
+function exportPayrollCsv(rows) { const lines = [['Name', 'Gross', 'Deductions', 'Net Pay'], ...rows.map(row => [row.children[1].innerText.split('\n')[0], row.querySelector('.payrollGross').innerText, row.querySelector('.payrollDeductions').innerText, row.querySelector('.payrollNet').innerText])].map(line => line.map(csvCell).join(',')).join('\r\n'); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([lines], { type: 'text/csv;charset=utf-8' })); link.download = `payroll-${payrollState.period.period_start}-${payrollState.period.period_end}.csv`; link.click(); URL.revokeObjectURL(link.href); }
+
+async function emailPayrollSummary(rows) { const recipient = prompt('Recipient email:'); if (!recipient) return; const html = `<h2>Payroll Summary</h2><table><tr><th>Name</th><th>Gross</th><th>Deductions</th><th>Net Pay</th></tr>${rows.map(row => `<tr><td>${row.children[1].innerText.split('\n')[0]}</td><td>${row.querySelector('.payrollGross').innerText}</td><td>${row.querySelector('.payrollDeductions').innerText}</td><td>${row.querySelector('.payrollNet').innerText}</td></tr>`).join('')}</table>`; const { data: sessionData } = await sb.auth.getSession(); const response = await fetch(`${SUPABASE_URL}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${sessionData.session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: recipient, subject: 'Payroll Summary', html }) }); if (!response.ok) alert(await response.text()); }
+
+function showPayrollPaymentForm(el, rows) { const form = document.createElement('div'); form.className = 'mt-card p-4 mt-4'; form.innerHTML = `<p class="font-medium mb-2">Record Payment</p><select id="paymentMethod" class="border rounded-lg px-3 py-2 text-sm mr-2"><option>Bank Transfer</option><option>Mobile Money</option><option>Cash</option><option>Other</option></select><input id="paymentReference" placeholder="Reference Number" class="border rounded-lg px-3 py-2 text-sm mr-2"><button id="confirmPayrollPayment" type="button" class="mt-btn-primary">Confirm</button>`; el.querySelector('.mt-card').appendChild(form); document.getElementById('confirmPayrollPayment').onclick = async () => { const entryIds = rows.map(row => payrollState.entries.find(entry => entry.staff_id === row.dataset.staffId).id); const { error } = await sb.rpc('mark_payroll_entries_paid', { p_entry_ids: entryIds, p_method: document.getElementById('paymentMethod').value, p_reference: document.getElementById('paymentReference').value.trim() }); if (error) alert(error.message); else renderPayroll(el); }; }
 
 // ===== SITES =====
 
