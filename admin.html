@@ -40,8 +40,7 @@ let attendanceStatus = 'present';
 function app() { return document.getElementById('app'); }
 
 async function init() {
-  const { data } = await sb.auth.getSession();
-  session = data.session;
+  session = await waitForInitialSession();
   if (session) await loadProfile();
   render();
 }

@@ -17,11 +17,22 @@ function toggleEye(id, btn) {
   btn.textContent = showing ? "👁" : "🙈";
 }
 
+function waitForInitialSession() {
+  return new Promise((resolve) => {
+    const { data: listener } = sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        listener.subscription.unsubscribe();
+        resolve(session);
+      }
+    });
+  });
+}
+
 async function getSessionAndRole() {
-  const { data: sessionData } = await sb.auth.getSession();
-  if (!sessionData.session) return { session: null, isAdmin: false, role: null };
+  const session = await waitForInitialSession();
+  if (!session) return { session: null, isAdmin: false, role: null };
   const { data: isAdmin } = await sb.rpc('is_platform_admin');
-  if (!isAdmin) return { session: sessionData.session, isAdmin: false, role: null };
+  if (!isAdmin) return { session: session, isAdmin: false, role: null };
   const { data: role } = await sb.rpc('platform_my_role');
-  return { session: sessionData.session, isAdmin: true, role };
+  return { session: session, isAdmin: true, role };
 }
