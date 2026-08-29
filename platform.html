@@ -194,7 +194,7 @@ async function renderOwnerDashboard() {
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
-  wireCompanyInteractions(companies || []);
+  wireCompanyInteractions(companies || [], true);
   document.getElementById('genInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_platform_invite');
     if (!error) generatedInviteCode = data;
@@ -233,17 +233,17 @@ function companyCardHtml(company) {
   </div>`;
 }
 
-function wireCompanyInteractions(companies) {
+function wireCompanyInteractions(companies, ownerDashboard = false) {
   const search = document.getElementById('companySearch');
   search.oninput = () => { const query = search.value.trim().toLowerCase(); document.querySelectorAll('.companyCard').forEach(card => card.classList.toggle('hidden', query && !`${card.dataset.name} ${card.dataset.code}`.includes(query))); };
-  document.querySelectorAll('.viewCompanyBtn').forEach(button => { button.onclick = () => openCompanyDetails(button.dataset.companyId); });
+  document.querySelectorAll('.viewCompanyBtn').forEach(button => { button.onclick = () => openCompanyDetails(button.dataset.companyId, ownerDashboard); });
 }
 
 function detailMetric(label, value) {
   return value === null ? '' : `<p class="text-xs">${label}: ${value}</p>`;
 }
 
-async function openCompanyDetails(companyId) {
+async function openCompanyDetails(companyId, ownerDashboard = false) {
   if (!companyId) { alert('Company ID is missing from the company list.'); return; }
   const [{ data: detail, error: detailError }, { data: activity, error: activityError }] = await Promise.all([
     sb.rpc('platform_get_company_detail', { p_company_id: companyId }),
@@ -254,6 +254,7 @@ async function openCompanyDetails(companyId) {
   const activityRows = (activity || []).map(item => `<tr class="border-b"><td class="py-2 px-3">${item.category || ''}</td><td class="py-2 px-3">${item.action || ''}</td><td class="py-2 px-3">${item.detail || ''}</td><td class="py-2 px-3 text-xs text-gray-400">${item.performed_at ? new Date(item.performed_at).toLocaleString() : ''}</td></tr>`).join('');
   const servicePlan = company.service_plan || '';
   const servicePlanHtml = state.role === 'owner' ? `<div class="mt-card p-3 mb-4"><p class="font-medium text-sm mb-2">Service Plan</p><div class="flex items-center gap-2"><select id="companyServicePlan" class="border rounded-lg px-3 py-2 text-sm"><option value="attendance" ${servicePlan === 'attendance' ? 'selected' : ''}>Attendance Only</option><option value="payroll" ${servicePlan === 'payroll' ? 'selected' : ''}>Payroll Only</option><option value="both" ${servicePlan === 'both' ? 'selected' : ''}>Attendance + Payroll</option></select><button id="saveCompanyPlanBtn" type="button" class="mt-btn-primary">Save Plan</button></div><p class="text-xs text-gray-500 mt-2">Generate an invoice for this company's plan from the Accounts &amp; Billing section.</p></div>` : '';
+  const moderationHtml = ownerDashboard && state.role === 'owner' ? `<div class="mt-card p-3 mt-5"><p class="font-medium text-sm mb-2">Company Moderation</p><label class="block text-xs text-gray-500 mb-1" for="companyModerationReason">Reason (recorded on file)</label><input id="companyModerationReason" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mb-3"><div class="flex flex-wrap gap-2">${company.status !== 'active' ? '<button id="reactivateCompanyBtn" type="button" class="mt-btn-primary">Reactivate</button>' : ''}${company.status !== 'closed' ? '<button id="closeCompanyBtn" type="button" class="mt-btn-outline" style="color:#4b5563;border-color:#9ca3af;">Close Company</button>' : ''}${company.status !== 'blocked' ? '<button id="blockCompanyBtn" type="button" class="mt-btn-danger-outline">Block Company</button>' : ''}</div><div class="border-t mt-3 pt-3"><button id="deleteCompanyBtn" type="button" class="mt-btn-danger-outline">Delete Permanently</button></div><p id="companyModerationError" class="text-red-600 text-sm mt-2"></p></div>` : '';
   const modal = document.createElement('div');
   modal.id = 'companyDetailModal'; modal.className = 'fixed inset-0 bg-black/40 z-50 p-4 overflow-y-auto';
   modal.innerHTML = `<div class="mt-card max-w-2xl mx-auto mt-8 p-5"><div class="flex justify-between items-start mb-4"><div><h2 class="text-lg font-bold" style="color: var(--mt-green-dark);">${company.name || ''}</h2><p class="text-xs text-gray-400 font-mono">${company.org_code || ''}</p></div><button id="closeCompanyDetail" type="button" class="mt-btn-outline">Close</button></div>
@@ -261,7 +262,7 @@ async function openCompanyDetails(companyId) {
     <div class="grid grid-cols-2 gap-2 mb-4"><div><p class="text-xs text-gray-500">Admin</p><p class="text-sm">${company.admin_name || ''}${company.admin_mobile ? ` · ${company.admin_mobile}` : ''}</p></div><div><p class="text-xs text-gray-500">Billing Email</p><p class="text-sm">${company.billing_email || ''}</p></div></div>
     ${servicePlanHtml}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4"><div class="mt-card p-3"><p class="font-medium text-sm">Staff</p>${detailMetric('Total', metricValue(company, 'staff_total', 'total_staff'))}${detailMetric('Active', metricValue(company, 'staff_active'))}${detailMetric('On leave', metricValue(company, 'staff_on_leave'))}${detailMetric('Inactive', metricValue(company, 'staff_inactive'))}</div><div class="mt-card p-3"><p class="font-medium text-sm">Sites</p>${detailMetric('Total', metricValue(company, 'sites_total', 'total_sites'))}${detailMetric('With GPS', metricValue(company, 'sites_with_gps'))}${detailMetric('Without GPS', metricValue(company, 'sites_without_gps'))}</div><div class="mt-card p-3"><p class="font-medium text-sm">Attendance Last 30 Days</p>${detailMetric('Present', metricValue(company, 'attendance_present'))}${detailMetric('Late', metricValue(company, 'attendance_late'))}${detailMetric('Absent', metricValue(company, 'attendance_absent'))}</div></div>
-    <h3 class="font-medium text-sm mb-2">Company Audit Trail</h3><div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Type</th><th>Action</th><th>Detail</th><th>When</th></tr></thead><tbody>${activityRows || '<tr><td class="text-gray-400" colspan="4">No activity yet.</td></tr>'}</tbody></table></div></div>`;
+    <h3 class="font-medium text-sm mb-2">Company Audit Trail</h3><div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Type</th><th>Action</th><th>Detail</th><th>When</th></tr></thead><tbody>${activityRows || '<tr><td class="text-gray-400" colspan="4">No activity yet.</td></tr>'}</tbody></table></div>${moderationHtml}</div>`;
   document.body.appendChild(modal); document.getElementById('closeCompanyDetail').onclick = () => modal.remove();
   if (state.role === 'owner') {
     document.getElementById('saveCompanyPlanBtn').onclick = async () => {
@@ -270,6 +271,31 @@ async function openCompanyDetails(companyId) {
       if (error) { alert(error.message); return; }
       modal.remove();
       openCompanyDetails(companyId);
+    };
+  }
+  if (ownerDashboard && state.role === 'owner') {
+    const moderationError = document.getElementById('companyModerationError');
+    const runModerationAction = async (status) => {
+      moderationError.textContent = '';
+      const reason = document.getElementById('companyModerationReason').value.trim() || null;
+      const { error } = await sb.rpc('platform_set_company_status', { p_company_id: companyId, p_status: status, p_reason: reason });
+      if (error) { moderationError.textContent = error.message; return; }
+      modal.remove();
+      renderOwnerDashboard();
+    };
+    const reactivateButton = document.getElementById('reactivateCompanyBtn');
+    const closeButton = document.getElementById('closeCompanyBtn');
+    const blockButton = document.getElementById('blockCompanyBtn');
+    if (reactivateButton) reactivateButton.onclick = () => runModerationAction('active');
+    if (closeButton) closeButton.onclick = () => runModerationAction('closed');
+    if (blockButton) blockButton.onclick = () => runModerationAction('blocked');
+    document.getElementById('deleteCompanyBtn').onclick = async () => {
+      if (!confirm(`Delete ${company.name}? This cannot be undone.`)) return;
+      moderationError.textContent = '';
+      const { error } = await sb.rpc('platform_delete_company', { p_company_id: companyId });
+      if (error) { moderationError.textContent = error.message; return; }
+      modal.remove();
+      renderOwnerDashboard();
     };
   }
 }
