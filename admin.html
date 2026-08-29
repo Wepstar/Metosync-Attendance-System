@@ -6,6 +6,7 @@
 <title>Metosync — Admin Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="theme.css">
 <script src="shared.js"></script>
 <style>
@@ -31,6 +32,8 @@ let staffCountry = '';
 let staffTypeSelected = 'permanent';
 let casualPinEnabled = false;
 let customFields = [];
+let bulkStaffPreview = [];
+let bulkStaffResults = [];
 let attendanceDate = new Date().toISOString().slice(0, 10);
 let attendanceStatus = 'present';
 
@@ -264,12 +267,14 @@ async function wireGeneralPayroll(el) {
 }
 
 function payrollIndividualHtml() {
-  return `<div class="mt-card p-5 max-w-xl"><h2 class="font-medium mb-3">Individual Payroll</h2><select id="individualPayrollStaff" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${payrollState.staff.map(staff => `<option value="${staff.id}">${staff.full_name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-2"><label class="text-sm">Weekday Days<input id="individualWeekdayDays" type="number" min="0" step="1" value="0" class="block w-full border rounded-lg px-3 py-2 mt-1"></label><label class="text-sm">Weekend Days<input id="individualWeekendDays" type="number" min="0" step="1" value="0" class="block w-full border rounded-lg px-3 py-2 mt-1"></label></div><p id="individualPayrollPreview" class="text-sm text-gray-600 mt-3">Enter days to preview pay.</p><p id="individualPayrollMessage" class="text-sm mt-2"></p><button id="saveIndividualPayrollBtn" type="button" class="mt-btn-primary mt-3">Save</button></div>`;
+  const firstStaff = payrollState.staff[0];
+  const firstEntry = firstStaff && payrollState.entries.find(entry => entry.staff_id === firstStaff.id);
+  return `<div class="mt-card p-5 max-w-xl"><h2 class="font-medium mb-3">Individual Payroll</h2><select id="individualPayrollStaff" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${payrollState.staff.map(staff => `<option value="${staff.id}">${staff.full_name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-2"><label class="text-sm">Weekday Days<input id="individualWeekdayDays" type="number" min="0" step="1" value="${firstEntry ? firstEntry.weekday_days || 0 : 0}" class="block w-full border rounded-lg px-3 py-2 mt-1"></label><label class="text-sm">Weekend Days<input id="individualWeekendDays" type="number" min="0" step="1" value="${firstEntry ? firstEntry.weekend_days || 0 : 0}" class="block w-full border rounded-lg px-3 py-2 mt-1"></label></div><p id="individualPayrollPreview" class="text-sm text-gray-600 mt-3">Enter days to preview pay.</p><p id="individualPayrollMessage" class="text-sm mt-2"></p><button id="saveIndividualPayrollBtn" type="button" class="mt-btn-primary mt-3">Save</button></div>`;
 }
 
 async function wireIndividualPayroll(el) {
   const staffSelect = document.getElementById('individualPayrollStaff'), preview = async () => { const staff = payrollState.staff.find(item => item.id === staffSelect.value); const { data, error } = await sb.rpc('preview_payroll_entry', { p_staff_id: staff.id, p_weekday_days: Number(document.getElementById('individualWeekdayDays').value || 0), p_weekend_days: Number(document.getElementById('individualWeekendDays').value || 0) }); document.getElementById('individualPayrollPreview').textContent = error ? error.message : payrollPreviewHtml(data, staff.currency); };
-  staffSelect.onchange = preview; document.getElementById('individualWeekdayDays').onchange = preview; document.getElementById('individualWeekendDays').onchange = preview; preview();
+  staffSelect.onchange = () => { const entry = payrollState.entries.find(item => item.staff_id === staffSelect.value); document.getElementById('individualWeekdayDays').value = entry ? entry.weekday_days || 0 : 0; document.getElementById('individualWeekendDays').value = entry ? entry.weekend_days || 0 : 0; preview(); }; document.getElementById('individualWeekdayDays').onchange = preview; document.getElementById('individualWeekendDays').onchange = preview; preview();
   document.getElementById('saveIndividualPayrollBtn').onclick = async () => { const { error } = await sb.rpc('save_payroll_entry', { p_payroll_period_id: payrollState.period.id, p_staff_id: staffSelect.value, p_weekday_days: Number(document.getElementById('individualWeekdayDays').value || 0), p_weekend_days: Number(document.getElementById('individualWeekendDays').value || 0) }); document.getElementById('individualPayrollMessage').textContent = error ? error.message : '✓ Saved'; };
 }
 
@@ -428,6 +433,54 @@ function customFieldsHtml() {
     </div>`).join('');
 }
 
+const bulkStaffHeaders = ['Full Name', 'Phone', 'Staff Type', 'Department', 'Role', 'Staff Code', 'Site', 'Pay Type', 'Weekday Rate', 'Weekend Rate', 'Fixed Salary', 'Currency', 'PIN (optional)'];
+
+function bulkCell(row, key) { return String(row[key] ?? '').trim(); }
+
+function bulkNormalize(value) { return String(value ?? '').trim().toLowerCase(); }
+
+function bulkRandomPin() { return String(Math.floor(Math.random() * 10000)).padStart(4, '0'); }
+
+function downloadBulkTemplate(existingSites = []) {
+  const example = ['Ama Mensah', '0240000000', 'Permanent', '', 'Cashier', 'ST001', existingSites[0] ? existingSites[0].name : '', 'Daily', '50', '75', '', 'GHS', '1234'];
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet([bulkStaffHeaders, example]);
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Staff Upload');
+  XLSX.writeFile(workbook, 'staff-upload-template.xlsx');
+}
+
+function bulkPreviewRow(row, index, sites) {
+  const fullName = bulkCell(row, 'Full Name');
+  const phone = bulkCell(row, 'Phone');
+  const staffType = bulkCell(row, 'Staff Type').toLowerCase();
+  const payType = bulkCell(row, 'Pay Type').toLowerCase();
+  const siteName = bulkCell(row, 'Site');
+  const matchedSite = sites.find(site => bulkNormalize(site.name) === bulkNormalize(siteName));
+  let error = '';
+  if (!fullName) error = 'Full Name is required';
+  else if (!phone) error = 'Phone is required';
+  else if (!matchedSite) error = `Site not found: ${siteName}`;
+  else if (!['permanent', 'casual'].includes(staffType)) error = 'Staff Type must be Permanent or Casual';
+  else if (staffType === 'permanent' && !['daily', 'fixed'].includes(payType)) error = 'Pay Type must be Daily or Fixed';
+  else if (staffType === 'permanent' && payType === 'daily' && (!bulkCell(row, 'Weekday Rate') || !bulkCell(row, 'Weekend Rate'))) error = 'Weekday Rate and Weekend Rate are required';
+  else if (staffType === 'permanent' && payType === 'fixed' && !bulkCell(row, 'Fixed Salary')) error = 'Fixed Salary is required';
+  else if (staffType === 'casual' && !bulkCell(row, 'Fixed Salary')) error = 'Fixed Salary is required';
+  return { index, row, matchedSite, staffType, payType, currency: bulkCell(row, 'Currency') || 'GHS', ready: !error, error };
+}
+
+function bulkPreviewHtml() {
+  if (!bulkStaffPreview.length) return '';
+  const rows = bulkStaffPreview.map(item => `<tr><td>${bulkCell(item.row, 'Full Name')}</td><td>${bulkCell(item.row, 'Phone')}</td><td>${bulkCell(item.row, 'Site')}</td><td>${item.ready ? '<span class="mt-badge active">✅ Ready</span>' : `<span class="mt-badge inactive">❌ ${item.error}</span>`}</td></tr>`).join('');
+  return `<div class="mt-card p-4 mb-4"><h3 class="font-medium mb-3">Upload Preview</h3><div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Name</th><th>Phone</th><th>Site</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div><button id="confirmBulkImportBtn" type="button" class="mt-btn-primary mt-3" ${bulkStaffPreview.some(item => item.ready) ? '' : 'disabled'}>Confirm Import</button><p id="bulkImportProgress" class="text-sm text-gray-500 mt-2"></p></div>`;
+}
+
+function bulkResultsHtml() {
+  if (!bulkStaffResults.length) return '';
+  const rows = bulkStaffResults.map(result => `<tr><td>${result.name}</td><td>${result.phone}</td><td>${result.success ? '<span class="mt-badge active">✅ Imported</span>' : `<span class="mt-badge inactive">❌ Failed: ${result.error}</span>`}</td><td class="font-mono">${result.pin || ''}</td></tr>`).join('');
+  const pinRows = bulkStaffResults.filter(result => result.success && result.pin).map(result => `${[result.name, result.phone, result.pin].map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')}`).join('\r\n');
+  return `<div class="mt-card p-4 mb-4"><h3 class="font-medium mb-3">Import Results</h3><div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>PIN</th></tr></thead><tbody>${rows}</tbody></table></div>${pinRows ? `<button id="downloadPinListBtn" type="button" class="mt-btn-outline mt-3">Download PIN List (CSV)</button><textarea id="bulkPinCsv" class="hidden">Name,Phone,PIN\r\n${pinRows}</textarea>` : ''}</div>`;
+}
+
 async function renderStaff(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
   const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
@@ -514,6 +567,18 @@ async function renderStaff(el) {
       <button id="addStaffBtn" type="button" class="mt-btn-primary mt-3">Add Staff</button>
     </div>
 
+    <div class="mt-card p-4 mb-4 mt-fade-in">
+      <h2 class="font-medium mb-3">Bulk Upload from Excel</h2>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <button id="downloadStaffTemplateBtn" type="button" class="mt-btn-outline">Download Template</button>
+        <input id="bulkStaffFile" type="file" accept=".xlsx,.xls" class="border rounded-lg px-3 py-2 text-sm">
+        <button id="uploadStaffPreviewBtn" type="button" class="mt-btn-primary">Upload &amp; Preview</button>
+      </div>
+      <p id="bulkUploadError" class="text-red-600 text-sm mb-2"></p>
+      ${bulkPreviewHtml()}
+      ${bulkResultsHtml()}
+    </div>
+
     <div class="mt-card p-4 overflow-x-auto mt-fade-in">
       <div class="flex justify-between items-center mb-2">
         <h2 class="font-medium">Staff Catalog</h2>
@@ -524,6 +589,84 @@ async function renderStaff(el) {
         <tbody>${rows || '<tr><td class="text-gray-400 py-4" colspan="6">No staff yet.</td></tr>'}</tbody>
       </table>
     </div>`;
+
+  document.getElementById('downloadStaffTemplateBtn').onclick = () => downloadBulkTemplate(sites);
+  document.getElementById('uploadStaffPreviewBtn').onclick = async () => {
+    const file = document.getElementById('bulkStaffFile').files[0];
+    const uploadError = document.getElementById('bulkUploadError');
+    uploadError.textContent = '';
+    if (!file) { uploadError.textContent = 'Choose an Excel file first.'; return; }
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      bulkStaffPreview = rows.map((row, index) => bulkPreviewRow(row, index, sites));
+      bulkStaffResults = [];
+      renderStaff(el);
+    } catch (error) {
+      uploadError.textContent = `Could not read the Excel file: ${error.message}`;
+    }
+  };
+  const confirmBulkImportBtn = document.getElementById('confirmBulkImportBtn');
+  if (confirmBulkImportBtn) {
+    confirmBulkImportBtn.onclick = async () => {
+      const readyRows = bulkStaffPreview.filter(item => item.ready);
+      const progress = document.getElementById('bulkImportProgress');
+      bulkStaffResults = [];
+      for (let index = 0; index < readyRows.length; index += 1) {
+        const item = readyRows[index];
+        const row = item.row;
+        const name = bulkCell(row, 'Full Name');
+        const phone = bulkCell(row, 'Phone');
+        progress.textContent = `Importing ${index + 1} of ${readyRows.length}...`;
+        const providedPin = bulkCell(row, 'PIN (optional)');
+        const pin = providedPin || bulkRandomPin();
+        const assignedPin = item.staffType === 'permanent' || providedPin ? pin : null;
+        let result = { name, phone, success: false, error: '', pin: assignedPin };
+        try {
+          let pinHash = null;
+          if (assignedPin) {
+            const { data: hashed, error: hashError } = await sb.rpc('hash_pin', { p_pin: assignedPin });
+            if (hashError) throw hashError;
+            pinHash = hashed;
+          }
+          const { error: addError } = await sb.rpc('add_staff', { p_staff: {
+            site_id: item.matchedSite.id,
+            full_name: name,
+            phone,
+            staff_type: item.staffType,
+            department: bulkCell(row, 'Department') || null,
+            role: bulkCell(row, 'Role') || null,
+            staff_code: bulkCell(row, 'Staff Code') || null,
+            pin_hash: pinHash,
+            pay_type: item.staffType === 'casual' || item.payType === 'fixed' ? 'monthly' : 'daily',
+            weekday_rate: item.staffType === 'permanent' && item.payType === 'daily' ? Number(bulkCell(row, 'Weekday Rate')) : null,
+            weekend_rate: item.staffType === 'permanent' && item.payType === 'daily' ? Number(bulkCell(row, 'Weekend Rate')) : null,
+            monthly_salary: item.staffType === 'casual' || item.payType === 'fixed' ? Number(bulkCell(row, 'Fixed Salary')) : null,
+            currency: item.currency
+          }});
+          if (addError) throw addError;
+          result.success = true;
+        } catch (error) {
+          result.error = error.message;
+        }
+        bulkStaffResults.push(result);
+      }
+      progress.textContent = `Import complete: ${bulkStaffResults.filter(result => result.success).length} imported, ${bulkStaffResults.filter(result => !result.success).length} failed.`;
+      renderStaff(el);
+    };
+  }
+  const downloadPinListBtn = document.getElementById('downloadPinListBtn');
+  if (downloadPinListBtn) {
+    downloadPinListBtn.onclick = () => {
+      const csv = document.getElementById('bulkPinCsv').value;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      link.download = 'staff-pin-list.csv';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    };
+  }
 
   document.getElementById('f_stafftype').onchange = (e) => {
     staffTypeSelected = e.target.value;
