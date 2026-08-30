@@ -6,10 +6,83 @@
 <title>Metosync — Sign Up</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="shared.js"></script>
+<style>
+  body{font-family:'Manrope',ui-sans-serif,system-ui,-apple-system,sans-serif;}
+  .dot{width:7px;height:7px;border-radius:9999px;background:rgba(255,255,255,.35);}
+  .dot.active{width:20px;background:#ffffff;}
+  .fld{width:100%;border:1px solid #e5e7eb;border-radius:0.75rem;padding:0.85rem 1rem;font-size:0.9rem;background:#fff;}
+  .fld:focus{outline:none;box-shadow:0 0 0 3px rgba(18,128,92,.15);border-color:#12805c;}
+  ::placeholder{color:#9ca3af;}
+</style>
 </head>
 <body class="bg-[#f4f7f5] min-h-screen">
-<div id="app" class="max-w-lg mx-auto p-4"><p class="text-gray-400 text-center mt-10">Verifying your invite…</p></div>
+<div class="min-h-screen flex items-center justify-center p-3 sm:p-6">
+  <div class="w-full max-w-5xl bg-white rounded-3xl shadow-xl overflow-hidden grid lg:grid-cols-[38%_62%]">
+
+    <!-- static branding panel (does not get re-rendered) -->
+    <div class="relative bg-gradient-to-br from-[#0d4a36] via-[#0a3a2b] to-[#08251c] text-white p-7 sm:p-8 flex flex-col">
+      <img src="metosync-logo.png" class="h-11 mb-8" alt="Metosync">
+
+      <h2 class="text-2xl font-bold leading-tight mb-3">Register your <span class="text-[#4ade80]">company</span></h2>
+      <p class="text-white/70 text-sm leading-relaxed mb-5">Every company's data on Metosync is kept fully separate and secure — your records are never visible to any other organization.</p>
+      <div class="w-10 h-1 bg-[#4ade80] rounded-full mb-6"></div>
+
+      <div class="space-y-4 mb-8">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 text-[#4ade80] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">100% Secure</p>
+            <p class="text-white/60 text-xs">Enterprise-grade security for your peace of mind.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 text-[#4ade80] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5"><path stroke-linecap="round" d="M4 20V10M12 20V4M20 20v-7"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">All-in-One</p>
+            <p class="text-white/60 text-xs">Attendance, payroll & reports in one simple platform.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 text-[#4ade80] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-5.13a4 4 0 110-8 4 4 0 010 8zm-6 9v-2a4 4 0 013-3.87m10 5.87v-2a4 4 0 00-3-3.87"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">Built for Growth</p>
+            <p class="text-white/60 text-xs">Scales with your team as you grow.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-auto bg-white/10 border border-white/10 rounded-2xl p-4 min-h-[168px]">
+        <p class="text-white/90 text-sm font-semibold mb-3">One platform. Many industries.</p>
+        <div id="industryCard" style="transition:opacity .25s ease;">
+          <div class="text-2xl mb-2">🏫</div>
+          <p class="text-white text-sm font-semibold mb-1">Schools &amp; Educational Institutions</p>
+          <p class="text-[#4ade80] text-xs font-medium mb-2">Teachers and School Administrators</p>
+          <p class="text-white/70 text-sm leading-relaxed">Managing staff attendance no longer has to involve paper registers and manual calculations. Metosync helps schools keep accurate records and save valuable time.</p>
+        </div>
+      </div>
+
+      <div id="industryDots" class="flex items-center gap-1.5 mt-6">
+        <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+      <p class="text-white/40 text-[11px] mt-4">© 2026 Metosync Tech Inc.</p>
+    </div>
+
+    <!-- dynamic form panel -->
+    <div id="app" class="p-6 sm:p-9 max-h-[94vh] overflow-y-auto">
+      <p class="text-gray-400 text-center mt-10">Verifying your invite…</p>
+    </div>
+  </div>
+</div>
+
 <script>
 let errorMsg = '';
 const onboardingCode = sessionStorage.getItem('metosync_onboarding_code') || '';
@@ -33,61 +106,70 @@ async function guardAndInit() {
 
 function render() {
   app().innerHTML = `
-    <div class="text-center mt-6 mb-4">
-      <img src="metosync-logo.png" class="h-20 mx-auto mb-3 drop-shadow-lg" alt="Metosync">
-      <h1 class="text-xl font-bold text-[#0d2a4d]">Company Registration</h1>
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Company Registration</h1>
+      <p class="text-sm text-gray-400">Fields marked * are required.</p>
     </div>
 
-    <div class="bg-white rounded-2xl p-5 shadow-sm">
-      <div class="grid grid-cols-4 gap-2 mb-2">
-        <select id="title" class="border rounded-xl px-2 py-3 text-sm">
-          <option value="">Title</option>
-          <option>Mr.</option><option>Mrs.</option><option>Ms.</option>
-        </select>
-        <input id="firstName" autocomplete="off" placeholder="First Name *" class="col-span-1 border rounded-xl px-3 py-3 text-sm">
-        <input id="surname" autocomplete="off" placeholder="Surname *" class="col-span-1 border rounded-xl px-3 py-3 text-sm">
-        <input id="otherNames" autocomplete="off" placeholder="Other" class="col-span-1 border rounded-xl px-3 py-3 text-sm">
+    <div class="grid grid-cols-4 gap-2 mb-3">
+      <select id="title" class="fld col-span-1">
+        <option value="">Title</option>
+        <option>Mr.</option><option>Mrs.</option><option>Ms.</option>
+      </select>
+      <input id="firstName" autocomplete="off" placeholder="First Name *" class="fld col-span-1">
+      <input id="surname" autocomplete="off" placeholder="Surname *" class="fld col-span-1">
+      <input id="otherNames" autocomplete="off" placeholder="Other" class="fld col-span-1">
+    </div>
+
+    <input id="companyName" autocomplete="off" placeholder="Organization Name *" class="fld mb-3">
+
+    <label class="block text-sm text-gray-600 mb-4">
+      <span class="block mb-1.5">Organization Logo (optional)</span>
+      <div class="flex items-center gap-3">
+        <input id="companyLogo" type="file" accept="image/png,image/jpeg,image/webp" class="fld text-sm">
+        <img id="companyLogoPreview" class="hidden w-12 h-12 object-contain rounded-lg border border-gray-200 shrink-0" alt="Organization logo preview">
       </div>
+    </label>
 
-      <input id="companyName" autocomplete="off" placeholder="Organization Name *" class="w-full border rounded-xl px-4 py-3 mb-2">
-      <label class="block text-sm text-gray-600 mb-2">Organization Logo (optional)
-        <input id="companyLogo" type="file" accept="image/png,image/jpeg,image/webp" class="w-full border rounded-xl px-3 py-2 mt-1 text-sm">
-      </label>
-      <img id="companyLogoPreview" class="hidden w-20 h-20 object-contain rounded-lg border mb-2" alt="Organization logo preview">
-      <input id="adminName" autocomplete="off" placeholder="Administrator Name (optional)" class="w-full border rounded-xl px-4 py-3 mb-2">
-      <input id="position" autocomplete="off" placeholder="Position" class="w-full border rounded-xl px-4 py-3 mb-2">
+    <input id="adminName" autocomplete="off" placeholder="Administrator Name (optional)" class="fld mb-3">
+    <input id="position" autocomplete="off" placeholder="Position" class="fld mb-3">
 
-      <div class="grid grid-cols-2 gap-2 mb-2">
-        <input id="mobile1" autocomplete="off" placeholder="Mobile 1 *" class="border rounded-xl px-3 py-3 text-sm">
-        <input id="mobile2" autocomplete="off" placeholder="Mobile 2 (optional)" class="border rounded-xl px-3 py-3 text-sm">
-      </div>
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <input id="mobile1" autocomplete="off" placeholder="Mobile 1 *" class="fld">
+      <input id="mobile2" autocomplete="off" placeholder="Mobile 2 (optional)" class="fld">
+    </div>
 
-      <input id="email" type="email" autocomplete="off" placeholder="Email *" class="w-full border rounded-xl px-4 py-3 mb-2">
+    <input id="email" type="email" autocomplete="off" placeholder="Email *" class="fld mb-3">
 
-      <div class="relative mb-2">
-        <input id="password" type="password" autocomplete="new-password" placeholder="Choose a password (min 6 characters) *" class="w-full border rounded-xl px-4 py-3 pr-10">
-        <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
-      </div>
-      <div class="relative mb-2">
-        <input id="password2" type="password" autocomplete="new-password" placeholder="Repeat Password *" class="w-full border rounded-xl px-4 py-3 pr-10">
-        <button type="button" onclick="toggleEye('password2',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
-      </div>
+    <div class="relative mb-3">
+      <input id="password" type="password" autocomplete="new-password" placeholder="Choose a password (min 6 characters) *" class="fld pr-11">
+      <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+    <div class="relative mb-3">
+      <input id="password2" type="password" autocomplete="new-password" placeholder="Repeat Password *" class="fld pr-11">
+      <button type="button" onclick="toggleEye('password2',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
 
-      <input id="country" autocomplete="off" placeholder="Country" class="w-full border rounded-xl px-4 py-3 mb-2">
-      <input id="address" autocomplete="off" placeholder="Address" class="w-full border rounded-xl px-4 py-3 mb-2">
-      <div class="grid grid-cols-2 gap-2 mb-3">
-        <input id="city" autocomplete="off" placeholder="City" class="border rounded-xl px-3 py-3 text-sm">
-        <input id="state" autocomplete="off" placeholder="State" class="border rounded-xl px-3 py-3 text-sm">
-      </div>
+    <input id="country" autocomplete="off" placeholder="Country" class="fld mb-3">
+    <input id="address" autocomplete="off" placeholder="Address" class="fld mb-3">
+    <div class="grid grid-cols-2 gap-2 mb-5">
+      <input id="city" autocomplete="off" placeholder="City" class="fld">
+      <input id="state" autocomplete="off" placeholder="State" class="fld">
+    </div>
 
-      <label class="flex items-start gap-2 text-xs text-gray-600 mb-4">
-        <input id="tcAccept" type="checkbox" class="mt-0.5">
-        <span>I accept all our terms and conditions *</span>
-      </label>
+    <div class="flex items-start gap-2.5 bg-[#e8f7ef] rounded-xl p-3.5 mb-4">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5 text-[#12805c] shrink-0 mt-0.5"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.3 2.3L16 10"/></svg>
+      <p class="text-xs text-[#0d2a4d] leading-relaxed"><span class="font-semibold">Your company's information is safe with us.</span><br>We never share your data with anyone.</p>
+    </div>
 
-      ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
-      <button id="signupBtn" class="w-full bg-[#0d2a4d] text-white rounded-xl py-3 font-medium">Create Company Account</button>
-    </div>`;
+    <label class="flex items-start gap-2 text-xs text-gray-600 mb-4">
+      <input id="tcAccept" type="checkbox" class="mt-0.5">
+      <span>I accept all our <span class="text-[#12805c] font-medium underline">terms and conditions</span> *</span>
+    </label>
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <button id="signupBtn" class="w-full bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Create Company Account</button>
+  `;
 
   document.getElementById('signupBtn').onclick = signup;
   document.getElementById('companyLogo').onchange = (e) => {
@@ -173,6 +255,39 @@ async function signup() {
 }
 
 guardAndInit();
+
+// Industry showcase rotation (decorative only — independent of the registration flow above)
+const INDUSTRIES = [
+  { emoji: '🏫', title: 'Schools &amp; Educational Institutions', audience: 'Teachers and School Administrators', desc: 'Managing staff attendance no longer has to involve paper registers and manual calculations. Metosync helps schools keep accurate records and save valuable time.' },
+  { emoji: '🌾', title: 'Farms &amp; Agricultural Businesses', audience: 'Farm Owners and Managers', desc: 'Keep track of workers, attendance and daily operations more efficiently while managing a growing workforce.' },
+  { emoji: '🏨', title: 'Hotels, Motels &amp; Restaurants', audience: 'Hospitality Businesses', desc: 'Keep your workforce organized and spend more time focusing on your customers.' },
+  { emoji: '🏗️', title: 'Construction &amp; Engineering Firms', audience: 'Project Managers and Contractors', desc: 'Maintain clearer workforce records across projects and teams.' },
+  { emoji: '💻', title: 'Technology &amp; Digital Businesses', audience: 'Team Leaders and Business Owners', desc: 'Keep workforce information organized whether your team works from one office or multiple locations.' },
+];
+let industryIndex = 0;
+function renderIndustry() {
+  const card = document.getElementById('industryCard');
+  const dotsWrap = document.getElementById('industryDots');
+  if (!card) return;
+  card.style.opacity = 0;
+  setTimeout(() => {
+    const it = INDUSTRIES[industryIndex];
+    card.innerHTML = `
+      <div class="text-2xl mb-2">${it.emoji}</div>
+      <p class="text-white text-sm font-semibold mb-1">${it.title}</p>
+      <p class="text-[#4ade80] text-xs font-medium mb-2">${it.audience}</p>
+      <p class="text-white/70 text-sm leading-relaxed">${it.desc}</p>
+    `;
+    card.style.opacity = 1;
+  }, 200);
+  if (dotsWrap) {
+    dotsWrap.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === industryIndex));
+  }
+}
+setInterval(() => {
+  industryIndex = (industryIndex + 1) % INDUSTRIES.length;
+  renderIndustry();
+}, 4500);
 </script>
 </body>
 </html>
