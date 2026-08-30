@@ -145,7 +145,7 @@ async function renderTabContent() {
     btn.className = `tabBtn mt-tab ${btn.dataset.tab === activeTab ? 'active' : ''}`;
   });
 
-    if (activeTab === 'sites') return renderSites(el);
+  if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
@@ -1181,9 +1181,6 @@ async function renderAttendance(el) {
   attendanceRefreshInterval = setInterval(() => renderAttendance(el), 60000);
 }
 
-init();
-</script>
-</body>
 // ===== SETTINGS =====
 
 let settingsMsg = '';
@@ -1339,4 +1336,6 @@ function renderContact(el) {
     </div>`;
 }
 
+</script>
+</body>
 init();
