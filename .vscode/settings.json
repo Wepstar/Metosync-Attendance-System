@@ -1,0 +1,7 @@
+{
+    "builder.serverUrl": "https://wepstar.github.io/Metosync-Attendance-System/platform.html",
+    "builder.command": "npm run dev",
+    "builder.runDevServer": false,
+    "builder.autoDetectDevServer": true,
+    "builder.launchType": "editor"
+}
