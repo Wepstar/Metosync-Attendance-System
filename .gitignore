@@ -1,0 +1,19 @@
+﻿# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Node / Dependencies
+node_modules/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+npm-debug.log*
