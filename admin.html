@@ -307,7 +307,7 @@ function showPayrollPaymentForm(el, rows) { const form = document.createElement(
 
 async function renderSites(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading sites…</p>`;
-  const { data, error } = await sb.from('sites').select('*').order('country').order('created_at', { ascending: false });
+  const { data, error } = await sb.from('sites').select('*').eq('company_id', myProfile.company_id).order('country').order('created_at', { ascending: false });
   if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
   sites = data;
 
@@ -485,8 +485,8 @@ function bulkResultsHtml() {
 async function renderStaff(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
   const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
-    sb.from('sites').select('*').order('country'),
-    sb.from('staff').select('*, sites(name, country)').order('created_at', { ascending: false })
+    sb.from('sites').select('*').eq('company_id', myProfile.company_id).order('country'),
+    sb.from('staff').select('*, sites(name, country)').eq('company_id', myProfile.company_id).order('created_at', { ascending: false })
   ]);
   if (sitesErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${sitesErr.message}</p>`; return; }
   if (staffErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${staffErr.message}</p>`; return; }
@@ -850,7 +850,7 @@ async function renderAttendance(el) {
   trendStart.setDate(trendStart.getDate() - 6);
   const trendStartDate = trendStart.toISOString().slice(0, 10);
   const [{ data: staffData, error: staffErr }, { data: attData, error: attErr }] = await Promise.all([
-    sb.from('staff').select('id, full_name, phone, sites(name, default_start_time)').order('full_name'),
+    sb.from('staff').select('id, full_name, phone, sites(name, default_start_time)').eq('company_id', myProfile.company_id).order('full_name'),
     sb.from('attendance').select('*, staff(full_name, phone), sites(name, default_start_time)').eq('work_date', attendanceDate).order('created_at', { ascending: false })
   ]);
   if (staffErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${staffErr.message}</p>`; return; }
@@ -1275,8 +1275,8 @@ async function renderSettings(el) {
     const msg = document.getElementById('exportAllMsg');
     msg.textContent = 'Exporting…';
     const [staffRes, sitesRes, attRes, payRes] = await Promise.all([
-      sb.from('staff').select('*'),
-      sb.from('sites').select('*'),
+      sb.from('staff').select('*').eq('company_id', myProfile.company_id),
+      sb.from('sites').select('*').eq('company_id', myProfile.company_id),
       sb.from('attendance').select('*, staff(full_name)').gte('work_date', new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)),
       sb.from('payroll_entries').select('*, staff(full_name)')
     ]);
