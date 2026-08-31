@@ -224,9 +224,6 @@ ON CONFLICT (id) DO UPDATE SET
   file_size_limit = 5242880,
   allowed_mime_types = ARRAY['image/png', 'image/jpeg', 'image/webp'];
 
--- Enable RLS on storage objects
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
 -- 12a. Public read access for logos (allows getPublicUrl to work for all visitors)
 DROP POLICY IF EXISTS "org_logo_public_read" ON storage.objects;
 CREATE POLICY "org_logo_public_read" ON storage.objects
