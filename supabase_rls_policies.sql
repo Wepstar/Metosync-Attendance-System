@@ -1,4 +1,4 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- METOSYNC COMPLETE ROW LEVEL SECURITY (RLS) & MULTI-TENANCY HARDENING SCRIPT
 -- ==============================================================================
 -- Run this in your Supabase SQL Editor:
@@ -210,20 +210,31 @@ CREATE POLICY "staff_custom_fields_tenant_all" ON public.staff_custom_fields
 -- ------------------------------------------------------------------------------
 -- 12. STORAGE BUCKET (org-logo) POLICIES
 -- ------------------------------------------------------------------------------
--- Ensure public read for avatars/logos, and tenant-restricted uploads
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'org-logo') THEN
-    UPDATE storage.buckets SET public = true WHERE id = 'org-logo';
-  END IF;
-END $$;
+-- Create bucket if not exists and ensure public = true
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'org-logo',
+  'org-logo',
+  true,
+  5242880, -- 5 MB limit
+  ARRAY['image/png', 'image/jpeg', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE SET 
+  public = true,
+  file_size_limit = 5242880,
+  allowed_mime_types = ARRAY['image/png', 'image/jpeg', 'image/webp'];
 
+-- Enable RLS on storage objects
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- 12a. Public read access for logos (allows getPublicUrl to work for all visitors)
 DROP POLICY IF EXISTS "org_logo_public_read" ON storage.objects;
 CREATE POLICY "org_logo_public_read" ON storage.objects
   FOR SELECT
   TO public
   USING (bucket_id = 'org-logo');
 
+-- 12b. Tenant upload policy (restricted to company folder: /{company_id}/*)
 DROP POLICY IF EXISTS "org_logo_tenant_upload" ON storage.objects;
 CREATE POLICY "org_logo_tenant_upload" ON storage.objects
   FOR INSERT
@@ -236,9 +247,23 @@ CREATE POLICY "org_logo_tenant_upload" ON storage.objects
     )
   );
 
+-- 12c. Tenant update policy
 DROP POLICY IF EXISTS "org_logo_tenant_update" ON storage.objects;
 CREATE POLICY "org_logo_tenant_update" ON storage.objects
   FOR UPDATE
+  TO authenticated
+  USING (
+    bucket_id = 'org-logo'
+    AND (
+      (storage.foldername(name))[1] = (public.auth_company_id())::text
+      OR (SELECT public.is_platform_admin())
+    )
+  );
+
+-- 12d. Tenant delete policy
+DROP POLICY IF EXISTS "org_logo_tenant_delete" ON storage.objects;
+CREATE POLICY "org_logo_tenant_delete" ON storage.objects
+  FOR DELETE
   TO authenticated
   USING (
     bucket_id = 'org-logo'

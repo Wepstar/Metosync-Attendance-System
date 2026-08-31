@@ -299,7 +299,21 @@ function csvCell(value) { return `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 function exportPayrollCsv(rows) { const lines = [['Name', 'Gross', 'Deductions', 'Net Pay'], ...rows.map(row => [row.children[1].innerText.split('\n')[0], row.querySelector('.payrollGross').innerText, row.querySelector('.payrollDeductions').innerText, row.querySelector('.payrollNet').innerText])].map(line => line.map(csvCell).join(',')).join('\r\n'); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([lines], { type: 'text/csv;charset=utf-8' })); link.download = `payroll-${payrollState.period.period_start}-${payrollState.period.period_end}.csv`; link.click(); URL.revokeObjectURL(link.href); }
 
-async function emailPayrollSummary(rows) { const recipient = prompt('Recipient email:'); if (!recipient) return; const html = `<h2>Payroll Summary</h2><table><tr><th>Name</th><th>Gross</th><th>Deductions</th><th>Net Pay</th></tr>${rows.map(row => `<tr><td>${row.children[1].innerText.split('\n')[0]}</td><td>${row.querySelector('.payrollGross').innerText}</td><td>${row.querySelector('.payrollDeductions').innerText}</td><td>${row.querySelector('.payrollNet').innerText}</td></tr>`).join('')}</table>`; const { data: sessionData } = await sb.auth.getSession(); const response = await fetch(`${SUPABASE_URL}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${sessionData.session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: recipient, subject: 'Payroll Summary', html }) }); if (!response.ok) alert(await response.text()); }
+async function emailPayrollSummary(rows) {
+  const recipient = prompt('Recipient email:');
+  if (!recipient) return;
+  const html = `<h2>Payroll Summary</h2><table border="1" cellpadding="6" cellspacing="0"><tr><th>Name</th><th>Gross</th><th>Deductions</th><th>Net Pay</th></tr>${rows.map(row => `<tr><td>${row.children[1].innerText.split('\n')[0]}</td><td>${row.querySelector('.payrollGross').innerText}</td><td>${row.querySelector('.payrollDeductions').innerText}</td><td>${row.querySelector('.payrollNet').innerText}</td></tr>`).join('')}</table>`;
+  
+  const { data, error } = await sb.functions.invoke('send-email', {
+    body: { to: recipient, subject: 'Payroll Summary', html }
+  });
+
+  if (error) {
+    alert(`Failed to send email: ${error.message}`);
+  } else {
+    alert(data?.message || 'Payroll summary email sent successfully!');
+  }
+}
 
 function showPayrollPaymentForm(el, rows) { const form = document.createElement('div'); form.className = 'mt-card p-4 mt-4'; form.innerHTML = `<p class="font-medium mb-2">Record Payment</p><select id="paymentMethod" class="border rounded-lg px-3 py-2 text-sm mr-2"><option>Bank Transfer</option><option>Mobile Money</option><option>Cash</option><option>Other</option></select><input id="paymentReference" placeholder="Reference Number" class="border rounded-lg px-3 py-2 text-sm mr-2"><button id="confirmPayrollPayment" type="button" class="mt-btn-primary">Confirm</button>`; el.querySelector('.mt-card').appendChild(form); document.getElementById('confirmPayrollPayment').onclick = async () => { const entryIds = rows.map(row => payrollState.entries.find(entry => entry.staff_id === row.dataset.staffId).id); const { error } = await sb.rpc('mark_payroll_entries_paid', { p_entry_ids: entryIds, p_method: document.getElementById('paymentMethod').value, p_reference: document.getElementById('paymentReference').value.trim() }); if (error) alert(error.message); else renderPayroll(el); }; }
 
