@@ -191,9 +191,12 @@ async function renderLanding() {
   };
 }
 
-async function promptSectionPassword(section) {
-  errorMsg = '';
-  const { data: isSet } = await sb.rpc('section_password_is_set', { p_section: section });
+async function promptSectionPassword(section, customError = '') {
+  errorMsg = customError;
+  const { data: isSet, error: checkErr } = await sb.rpc('section_password_is_set', { p_section: section });
+  if (checkErr) {
+    console.error('section_password_is_set error:', checkErr);
+  }
   const sectionTitle = section === 'owner' ? 'Owner Dashboard' : section.charAt(0).toUpperCase() + section.slice(1);
   app().innerHTML = `
     <div class="mt-card mt-fade-in p-6 mt-10">
@@ -202,24 +205,65 @@ async function promptSectionPassword(section) {
         <input id="sectionPw" type="password" autocomplete="off" placeholder="${isSet ? 'Enter password' : 'Set a new password'}" class="w-full border rounded-xl px-4 py-3 pr-10">
         <button type="button" onclick="toggleEye('sectionPw',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
       </div>
-      ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+      <p id="sectionPwError" class="text-red-600 text-sm mb-3 ${errorMsg ? '' : 'hidden'}">${errorMsg}</p>
       <button id="submitPwBtn" class="w-full mt-btn-primary mb-2">${isSet ? 'Unlock' : 'Set & Continue'}</button>
       <button id="backBtn" class="w-full text-sm text-gray-500">← Back</button>
     </div>`;
-  document.getElementById('backBtn').onclick = () => { errorMsg = ''; render(); };
+
+  const errEl = document.getElementById('sectionPwError');
+  const showErr = (msg) => {
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+    }
+  };
+
+  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  
   document.getElementById('submitPwBtn').onclick = async () => {
     const pw = document.getElementById('sectionPw').value;
-    if (!pw) { errorMsg = 'Enter a password.'; promptSectionPassword(section); return; }
-    if (!isSet) {
-      const { error } = await sb.rpc('set_section_password', { p_section: section, p_password: pw });
-      if (error) { errorMsg = error.message; promptSectionPassword(section); return; }
-      sectionUnlocked = section; render(); return;
+    if (!pw) { showErr('Enter a password.'); return; }
+    
+    const submitBtn = document.getElementById('submitPwBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Verifying…';
+
+    try {
+      if (!isSet) {
+        const { error } = await sb.rpc('set_section_password', { p_section: section, p_password: pw });
+        if (error) {
+          showErr(error.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Set & Continue';
+          return;
+        }
+        sectionUnlocked = section;
+        render();
+        return;
+      }
+      
+      const { data: ok, error } = await sb.rpc('verify_section_password', { p_section: section, p_password: pw });
+      if (error) {
+        showErr(error.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Unlock';
+        return;
+      }
+      if (!ok) {
+        showErr('Incorrect password.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Unlock';
+        return;
+      }
+      sectionUnlocked = section;
+      render();
+    } catch (err) {
+      showErr(err.message || 'An unexpected error occurred.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = isSet ? 'Unlock' : 'Set & Continue';
     }
-    const { data: ok, error } = await sb.rpc('verify_section_password', { p_section: section, p_password: pw });
-    if (error) { errorMsg = error.message; promptSectionPassword(section); return; }
-    if (!ok) { errorMsg = 'Incorrect password.'; promptSectionPassword(section); return; }
-    sectionUnlocked = section; render();
   };
+
   const pwInput = document.getElementById('sectionPw');
   if (pwInput) {
     pwInput.focus();
