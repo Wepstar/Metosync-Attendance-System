@@ -175,7 +175,7 @@ async function renderLanding() {
 
   document.querySelectorAll('[data-card]').forEach(btn => {
     btn.onclick = () => {
-      if (btn.dataset.card === 'ownerBtn') { sectionUnlocked = 'owner'; render(); return; }
+      if (btn.dataset.card === 'ownerBtn') { promptSectionPassword('owner'); return; }
       if (btn.dataset.card === 'registryBtn') { promptSectionPassword('registry'); return; }
       if (btn.dataset.card === 'accountsBtn') { promptSectionPassword('accounts'); return; }
     };
@@ -190,9 +190,10 @@ async function renderLanding() {
 async function promptSectionPassword(section) {
   errorMsg = '';
   const { data: isSet } = await sb.rpc('section_password_is_set', { p_section: section });
+  const sectionTitle = section === 'owner' ? 'Owner Dashboard' : section.charAt(0).toUpperCase() + section.slice(1);
   app().innerHTML = `
     <div class="mt-card mt-fade-in p-6 mt-10">
-      <h1 class="text-lg font-bold text-center mb-4 capitalize" style="color: var(--mt-green-dark);">${section} — Password Required</h1>
+      <h1 class="text-lg font-bold text-center mb-4" style="color: var(--mt-green-dark);">${sectionTitle} — Password Required</h1>
       <div class="relative mb-3">
         <input id="sectionPw" type="password" autocomplete="off" placeholder="${isSet ? 'Enter password' : 'Set a new password'}" class="w-full border rounded-xl px-4 py-3 pr-10">
         <button type="button" onclick="toggleEye('sectionPw',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
@@ -215,6 +216,13 @@ async function promptSectionPassword(section) {
     if (!ok) { errorMsg = 'Incorrect password.'; promptSectionPassword(section); return; }
     sectionUnlocked = section; render();
   };
+  const pwInput = document.getElementById('sectionPw');
+  if (pwInput) {
+    pwInput.focus();
+    pwInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('submitPwBtn').click(); }
+    });
+  }
 }
 
 function renderSection(section) {
