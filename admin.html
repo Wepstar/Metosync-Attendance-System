@@ -44,27 +44,38 @@ let attendanceStatus = 'present';
 function app() { return document.getElementById('app'); }
 
 async function init() {
-  session = await waitForInitialSession();
-  if (session) await loadProfile();
-  render();
+  try {
+    session = await getQuickSession();
+    if (session) {
+      await loadProfile();
+    }
+  } catch (err) {
+    console.error('Initialization error:', err);
+  } finally {
+    render();
+  }
 }
 
 async function loadProfile() {
-  const { data: profile } = await sb.from('admin_users').select('*, companies(*)').eq('id', session.user.id).maybeSingle();
-  if (profile) {
-    myProfile = profile;
-    myCompany = profile.companies || null;
-  }
-  if (myProfile && !myCompany && myProfile.company_id) {
-    const { data: company } = await sb.from('companies').select('*').eq('id', myProfile.company_id).maybeSingle();
-    myCompany = company;
+  try {
+    const { data: profile, error: profErr } = await sb.from('admin_users').select('*').eq('id', session.user.id).maybeSingle();
+    if (profErr) console.warn('Profile fetch warning:', profErr);
+    myProfile = profile || null;
+
+    if (myProfile && myProfile.company_id) {
+      const { data: company, error: compErr } = await sb.from('companies').select('*').eq('id', myProfile.company_id).maybeSingle();
+      if (compErr) console.warn('Company fetch warning:', compErr);
+      myCompany = company || null;
+    }
+  } catch (err) {
+    console.error('loadProfile error:', err);
   }
 }
 
 function render() {
   if (!session || activeTab !== 'attendance') clearAttendanceAutoRefresh();
   if (!session) return renderLogin();
-  if (!myProfile) return renderNoCompany();
+  if (!myProfile || !myCompany) return renderNoCompany();
   renderDashboard();
 }
 

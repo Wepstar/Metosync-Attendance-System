@@ -19,21 +19,14 @@ function toggleEye(id, btn) {
 
 async function getQuickSession() {
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    if (session) return session;
+    const { data, error } = await sb.auth.getSession();
+    if (data && 'session' in data) {
+      return data.session;
+    }
   } catch (e) {
     console.warn('Fast session fetch fallback:', e);
   }
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 1500);
-    const { data: listener } = sb.auth.onAuthStateChange((event, session) => {
-      clearTimeout(timeout);
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-        listener.subscription.unsubscribe();
-        resolve(session);
-      }
-    });
-  });
+  return null;
 }
 
 function waitForInitialSession() {
