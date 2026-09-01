@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Metosync — Admin Dashboard</title>
+<link rel="preconnect" href="https://lqgdyjvfirdhstcmepyr.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://lqgdyjvfirdhstcmepyr.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -46,9 +50,12 @@ async function init() {
 }
 
 async function loadProfile() {
-  const { data: profile } = await sb.from('admin_users').select('*').eq('id', session.user.id).maybeSingle();
-  myProfile = profile;
-  if (myProfile) {
+  const { data: profile } = await sb.from('admin_users').select('*, companies(*)').eq('id', session.user.id).maybeSingle();
+  if (profile) {
+    myProfile = profile;
+    myCompany = profile.companies || null;
+  }
+  if (myProfile && !myCompany && myProfile.company_id) {
     const { data: company } = await sb.from('companies').select('*').eq('id', myProfile.company_id).maybeSingle();
     myCompany = company;
   }

@@ -17,9 +17,17 @@ function toggleEye(id, btn) {
   btn.textContent = showing ? "👁" : "🙈";
 }
 
-function waitForInitialSession() {
+async function getQuickSession() {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) return session;
+  } catch (e) {
+    console.warn('Fast session fetch fallback:', e);
+  }
   return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), 1500);
     const { data: listener } = sb.auth.onAuthStateChange((event, session) => {
+      clearTimeout(timeout);
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
         listener.subscription.unsubscribe();
         resolve(session);
@@ -28,11 +36,20 @@ function waitForInitialSession() {
   });
 }
 
+function waitForInitialSession() {
+  return getQuickSession();
+}
+
 async function getSessionAndRole() {
-  const session = await waitForInitialSession();
+  const session = await getQuickSession();
   if (!session) return { session: null, isAdmin: false, role: null };
-  const { data: isAdmin } = await sb.rpc('is_platform_admin');
-  if (!isAdmin) return { session: session, isAdmin: false, role: null };
-  const { data: role } = await sb.rpc('platform_my_role');
-  return { session: session, isAdmin: true, role };
+
+  // Fetch admin status and role concurrently in a single network round-trip
+  const [{ data: isAdmin }, { data: role }] = await Promise.all([
+    sb.rpc('is_platform_admin'),
+    sb.rpc('platform_my_role')
+  ]);
+
+  if (!isAdmin) return { session, isAdmin: false, role: null };
+  return { session, isAdmin: true, role };
 }
