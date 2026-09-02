@@ -139,8 +139,9 @@ let generatedCompanyCode = '';
 let registryChannel = null;
 
 // Gate: a single site-wide password screen shown before anything else in the app.
-// Verified against a new backend RPC (platform_verify_gate_password) — this does not
-// touch or modify any existing RPC, table, or auth flow.
+// Uses the same section-password infrastructure as Registry/Accounts/Owner
+// (platform_section_passwords + section_password_is_set / set_section_password /
+// verify_section_password) with section = 'gate'. No new tables or RPCs.
 let gateUnlocked = sessionStorage.getItem('metosync_gate_unlocked') === '1';
 let gateError = '';
 let gateChecking = false;
@@ -157,7 +158,10 @@ function sparkSvg(size) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor"><path d="M12 0c.6 4.6 2 8 4 10s5.4 3.4 8 4c-2.6.6-6 2-8 4s-3.4 5.4-4 10c-.6-4.6-2-8-4-10s-5.4-3.4-8-4c2.6-.6 6-2 8-4s3.4-5.4 4-10z"/></svg>`;
 }
 
-function renderGate() {
+async function renderGate() {
+  const { data: isSet, error: checkErr } = await sb.rpc('section_password_is_set', { p_section: 'gate' });
+  if (checkErr) console.error('section_password_is_set error:', checkErr);
+
   app().classList.remove('platform-wide');
   app().className = 'gate-screen';
   app().innerHTML = `
@@ -175,12 +179,12 @@ function renderGate() {
           <p class="gate-panel-label">ENTER PASSWORD</p>
           <div class="relative">
             <span class="gate-knob"></span>
-            <input id="gatePassword" type="password" autocomplete="off" placeholder="Password"
+            <input id="gatePassword" type="password" autocomplete="off" placeholder="${isSet ? 'Password' : 'Set a new password'}"
               class="w-full border rounded-xl pl-7 pr-4 py-2.5 text-sm text-center focus:outline-none focus:ring-2"
               style="border-color:#d1d5db;">
           </div>
           ${gateError ? `<p class="text-red-600 text-xs mt-2">${gateError}</p>` : ''}
-          <button id="gateSubmitBtn" class="w-full mt-btn-primary mt-3">${gateChecking ? 'Checking…' : 'Enter'}</button>
+          <button id="gateSubmitBtn" class="w-full mt-btn-primary mt-3">${gateChecking ? 'Checking…' : (isSet ? 'Enter' : 'Set & Continue')}</button>
         </div>
       </div>
 
@@ -193,7 +197,16 @@ function renderGate() {
     if (!pw) { gateError = 'Enter the password.'; renderGate(); return; }
     gateChecking = true; gateError = ''; renderGate();
     try {
-      const { data: ok, error } = await sb.rpc('platform_verify_gate_password', { p_password: pw });
+      if (!isSet) {
+        const { error } = await sb.rpc('set_section_password', { p_section: 'gate', p_password: pw });
+        gateChecking = false;
+        if (error) { gateError = error.message; renderGate(); return; }
+        gateUnlocked = true;
+        sessionStorage.setItem('metosync_gate_unlocked', '1');
+        init();
+        return;
+      }
+      const { data: ok, error } = await sb.rpc('verify_section_password', { p_section: 'gate', p_password: pw });
       gateChecking = false;
       if (error) { gateError = error.message; renderGate(); return; }
       if (!ok) { gateError = 'Incorrect password.'; renderGate(); return; }
