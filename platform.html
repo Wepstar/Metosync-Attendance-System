@@ -146,11 +146,23 @@ let gateUnlocked = sessionStorage.getItem('metosync_gate_unlocked') === '1';
 let gateError = '';
 let gateChecking = false;
 
+// Shared platform account used to auto sign-in every staff member after the gate,
+// so no individual email/password screen is shown. This account is dedicated to
+// this purpose (not any real staff member's personal login) and has role 'owner'
+// so all three landing cards show — each section still needs its own password.
+const SHARED_LOGIN_EMAIL = 'metstaff369@gmail.com';
+const SHARED_LOGIN_PASSWORD = 'metostaff369*';
+
 function app() { return document.getElementById('app'); }
 
 async function init() {
   if (!gateUnlocked) { renderGate(); return; }
   state = await getSessionAndRole();
+  if (!state.session) {
+    const { error } = await sb.auth.signInWithPassword({ email: SHARED_LOGIN_EMAIL, password: SHARED_LOGIN_PASSWORD });
+    if (error) { errorMsg = error.message; render(); return; }
+    state = await getSessionAndRole();
+  }
   render();
 }
 
@@ -231,40 +243,21 @@ function render() {
   if (registryChannel) { sb.removeChannel(registryChannel); registryChannel = null; }
   app().className = 'max-w-md mx-auto p-4';
   app().classList.toggle('platform-wide', sectionUnlocked === 'registry' || sectionUnlocked === 'owner');
-  if (!state.session) return renderLogin();
+  if (!state.session) return renderConnecting();
   if (!state.isAdmin) return renderNoAccess();
   if (sectionUnlocked) return renderSection(sectionUnlocked);
   renderLanding();
 }
 
-function renderLogin() {
+function renderConnecting() {
   app().innerHTML = `
-    <div class="mt-card mt-fade-in p-6 mt-10">
-      <h1 class="text-xl font-bold text-center mb-4" style="color: var(--mt-green-dark);">Metosync Platform Login</h1>
-      <input id="email" type="email" autocomplete="off" placeholder="Email" class="w-full border rounded-xl px-4 py-3 mb-3">
-      <div class="relative mb-3">
-        <input id="password" type="password" autocomplete="off" placeholder="Password" class="w-full border rounded-xl px-4 py-3 pr-10">
-        <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
-      </div>
-      ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
-      <button id="loginBtn" class="w-full mt-btn-primary">Log In</button>
+    <div class="mt-card mt-fade-in p-6 mt-10 text-center">
+      ${errorMsg
+        ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p><button id="retryBtn" class="mt-btn-primary">Retry</button>`
+        : `<p class="text-gray-400">Connecting…</p>`}
     </div>`;
-  document.getElementById('loginBtn').onclick = async () => {
-    errorMsg = '';
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) { errorMsg = error.message; render(); return; }
-    state = await getSessionAndRole();
-    render();
-  };
-  app().querySelectorAll('input').forEach(el => {
-    el.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
-  });
-  setTimeout(() => {
-    const e1 = document.getElementById('email'), e2 = document.getElementById('password');
-    if (e1) e1.value = ''; if (e2) e2.value = '';
-  }, 50);
+  const retryBtn = document.getElementById('retryBtn');
+  if (retryBtn) retryBtn.onclick = () => { errorMsg = ''; init(); };
 }
 
 function renderNoAccess() {
