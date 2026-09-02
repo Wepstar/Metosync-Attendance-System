@@ -224,18 +224,25 @@ async function renderPayroll(el) {
     document.getElementById('startPayrollPeriodBtn').onclick = async () => {
       const start = document.getElementById('payrollPeriodStart').value, end = document.getElementById('payrollPeriodEnd').value;
       if (!start || !end) { document.getElementById('payrollPeriodError').textContent = 'Choose a start and end date.'; return; }
-      const { error } = await sb.from('payroll_periods').insert({ company_id: myProfile.company_id, period_start: start, period_end: end });
+      const { error } = await sb.rpc('create_payroll_period', { p_period_start: start, p_period_end: end });
       if (error) { document.getElementById('payrollPeriodError').textContent = error.message; return; }
       renderPayroll(el);
     };
     return;
   }
   const content = payrollSubTab === 'individual' ? payrollIndividualHtml() : payrollSubTab === 'taxes' ? payrollTaxesHtml() : payrollGeneralHtml();
-  el.innerHTML = `${payrollSubTabsHtml()}<div class="text-sm text-gray-500 mb-3">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} (Draft)</div>${content}`;
+  el.innerHTML = `${payrollSubTabsHtml()}<div class="flex flex-wrap items-center justify-between gap-2 mb-3"><div class="text-sm text-gray-500">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} (Draft)</div><div class="flex items-center gap-2"><button id="closePayrollPeriodBtn" type="button" class="mt-btn-outline">Close Period</button><span id="closePeriodMsg" class="text-sm"></span></div></div>${content}`;
   wirePayrollSubTabs(el);
   if (payrollSubTab === 'general') await wireGeneralPayroll(el);
   if (payrollSubTab === 'individual') await wireIndividualPayroll(el);
   if (payrollSubTab === 'taxes') wireTaxesPayroll(el);
+  document.getElementById('closePayrollPeriodBtn').onclick = async () => {
+    if (!confirm('Close this payroll period? Once closed it can no longer be edited, and a new period will need to be started.')) return;
+    const { error } = await sb.rpc('close_payroll_period', { p_payroll_period_id: period.id });
+    const msg = document.getElementById('closePeriodMsg');
+    if (error) { msg.className = 'text-sm text-red-600'; msg.textContent = error.message; return; }
+    renderPayroll(el);
+  };
 }
 
 function wirePayrollSubTabs(el) {
@@ -333,7 +340,7 @@ async function emailPayrollSummary(rows) {
   }
 }
 
-function showPayrollPaymentForm(el, rows) { const form = document.createElement('div'); form.className = 'mt-card p-4 mt-4'; form.innerHTML = `<p class="font-medium mb-2">Record Payment</p><select id="paymentMethod" class="border rounded-lg px-3 py-2 text-sm mr-2"><option>Bank Transfer</option><option>Mobile Money</option><option>Cash</option><option>Other</option></select><input id="paymentReference" placeholder="Reference Number" class="border rounded-lg px-3 py-2 text-sm mr-2"><button id="confirmPayrollPayment" type="button" class="mt-btn-primary">Confirm</button>`; el.querySelector('.mt-card').appendChild(form); document.getElementById('confirmPayrollPayment').onclick = async () => { const entryIds = rows.map(row => payrollState.entries.find(entry => entry.staff_id === row.dataset.staffId).id); const { error } = await sb.rpc('mark_payroll_entries_paid', { p_entry_ids: entryIds, p_method: document.getElementById('paymentMethod').value, p_reference: document.getElementById('paymentReference').value.trim() }); if (error) alert(error.message); else renderPayroll(el); }; }
+function showPayrollPaymentForm(el, rows) { const form = document.createElement('div'); form.className = 'mt-card p-4 mt-4'; form.innerHTML = `<p class="font-medium mb-2">Record Payment</p><select id="paymentMethod" class="border rounded-lg px-3 py-2 text-sm mr-2"><option value="bank_transfer">Bank Transfer</option><option value="mobile_money">Mobile Money</option><option value="cash">Cash</option><option value="other">Other</option></select><input id="paymentReference" placeholder="Reference Number" class="border rounded-lg px-3 py-2 text-sm mr-2"><button id="confirmPayrollPayment" type="button" class="mt-btn-primary">Confirm</button>`; el.querySelector('.mt-card').appendChild(form); document.getElementById('confirmPayrollPayment').onclick = async () => { const entryIds = rows.map(row => payrollState.entries.find(entry => entry.staff_id === row.dataset.staffId).id); const { error } = await sb.rpc('mark_payroll_entries_paid', { p_entry_ids: entryIds, p_method: document.getElementById('paymentMethod').value, p_reference: document.getElementById('paymentReference').value.trim() }); if (error) alert(error.message); else renderPayroll(el); }; }
 
 // ===== SITES =====
 
@@ -818,9 +825,10 @@ async function renderStaff(el) {
     syncCustomFieldsFromDom();
     const validFields = customFields.filter(f => f.label.trim());
     if (validFields.length) {
-      const { error: cfError } = await sb.from('staff_custom_fields').insert(
-        validFields.map(f => ({ staff_id: newStaffId, label: f.label.trim(), value: f.value.trim() || null }))
-      );
+      const { error: cfError } = await sb.rpc('add_staff_custom_fields', {
+        p_staff_id: newStaffId,
+        p_fields: validFields.map(f => ({ label: f.label.trim(), value: f.value.trim() || null }))
+      });
       if (cfError) {
         errorMsg = 'Staff saved, but additional info failed to save: ' + cfError.message;
         renderStaff(el);
