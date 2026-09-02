@@ -45,7 +45,7 @@ function app() { return document.getElementById('app'); }
 
 async function init() {
   try {
-    session = await getQuickSession();
+    session = await waitForInitialSession();
     if (session) {
       await loadProfile();
     }

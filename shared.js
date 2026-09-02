@@ -17,25 +17,20 @@ function toggleEye(id, btn) {
   btn.textContent = showing ? "👁" : "🙈";
 }
 
-async function getQuickSession() {
-  try {
-    const { data, error } = await sb.auth.getSession();
-    if (data && 'session' in data) {
-      return data.session;
-    }
-  } catch (e) {
-    console.warn('Fast session fetch fallback:', e);
-  }
-  return null;
-}
-
 function waitForInitialSession() {
-  return getQuickSession();
+  return new Promise((resolve) => {
+    const { data: listener } = sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        listener.subscription.unsubscribe();
+        resolve(session);
+      }
+    });
+  });
 }
 
 async function getSessionAndRole() {
-  const session = await getQuickSession();
-  if (!session) return { session: null, isAdmin: false, role: null };
+  const session = await waitForInitialSession();
+    if (!session) return { session: null, isAdmin: false, role: null };
 
   // Fetch admin status and role concurrently in a single network round-trip
   const [{ data: isAdmin }, { data: role }] = await Promise.all([
