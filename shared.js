@@ -18,14 +18,11 @@ function toggleEye(id, btn) {
 }
 
 function waitForInitialSession() {
-  return new Promise((resolve) => {
-    const { data: listener } = sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-        listener.subscription.unsubscribe();
-        resolve(session);
-      }
-    });
-  });
+  // Ask Supabase directly instead of waiting on an onAuthStateChange event —
+  // that event (INITIAL_SESSION) isn't guaranteed to fire in every case,
+  // and with no timeout/fallback this could hang forever with no error,
+  // leaving the page stuck on "Loading..." indefinitely.
+  return sb.auth.getSession().then(({ data }) => data.session || null);
 }
 
 async function getSessionAndRole() {
