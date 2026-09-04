@@ -89,32 +89,54 @@ create index if not exists staff_loan_requests_feed_idx
 create index if not exists attendance_status_changes_staff_event_idx
   on public.attendance_status_changes (staff_id, changed_at desc);
 
-create or replace function public.staff_start_login(p_phone text)
-returns table (challenge_token text, expires_at timestamptz)
+create or replace function public.staff_get_company(p_company_code text)
+returns table (company_name text, company_logo_url text, company_code text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select c.name, c.logo_url, c.org_code
+  from public.companies c
+  where c.org_code = trim(p_company_code) and c.status = 'active'
+  limit 1
+$$;
+
+drop function if exists public.staff_start_login(text);
+create or replace function public.staff_start_login(p_company_code text, p_phone text)
+returns table (challenge_token text, expires_at timestamptz, company_name text, company_logo_url text, company_code text)
 language plpgsql
 security definer
 set search_path = public, extensions
 as $$
 declare
   matched_staff uuid;
+  matched_company public.companies%rowtype;
   raw_token text;
   token_expiry timestamptz := now() + interval '5 minutes';
 begin
-  select id into matched_staff
-  from public.staff
-  where regexp_replace(phone, '[^0-9+]', '', 'g') = regexp_replace(trim(p_phone), '[^0-9+]', '', 'g')
-    and status = 'active'
-    and pin_hash is not null
+  select s.id into matched_staff
+  from public.staff s
+  join public.companies c on c.id = s.company_id
+  where c.org_code = trim(p_company_code)
+    and c.status = 'active'
+    and regexp_replace(s.phone, '[^0-9+]', '', 'g') = regexp_replace(trim(p_phone), '[^0-9+]', '', 'g')
+    and s.status = 'active'
+    and s.pin_hash is not null
   limit 1;
 
   if matched_staff is null then
     return;
   end if;
 
+  select c.* into matched_company from public.companies c
+  join public.staff s on s.company_id = c.id
+  where s.id = matched_staff;
+
   raw_token := encode(gen_random_bytes(32), 'hex');
   insert into public.staff_login_challenges (staff_id, token_hash, expires_at)
   values (matched_staff, encode(digest(raw_token, 'sha256'), 'hex'), token_expiry);
-  return query select raw_token, token_expiry;
+  return query select raw_token, token_expiry, matched_company.name, matched_company.logo_url, matched_company.org_code;
 end;
 $$;
 
@@ -410,7 +432,7 @@ alter table public.staff_leave_requests enable row level security;
 alter table public.staff_loan_requests enable row level security;
 
 revoke all on public.staff_login_challenges, public.staff_sessions, public.staff_notifications, public.staff_leave_requests, public.staff_loan_requests from anon, authenticated;
-grant execute on function public.staff_start_login(text), public.staff_verify_pin(text, text), public.staff_session_id(text), public.staff_check_in(text, numeric, numeric), public.staff_check_out(text, numeric, numeric), public.staff_get_status(text), public.staff_get_records(text, date, date), public.staff_get_pay_records(text), public.staff_get_notifications(text, boolean), public.staff_mark_notification_read(text, uuid), public.staff_request_leave(text, date, date, text), public.staff_request_loan(text, numeric, text) to anon, authenticated;
+grant execute on function public.staff_get_company(text), public.staff_start_login(text, text), public.staff_verify_pin(text, text), public.staff_session_id(text), public.staff_check_in(text, numeric, numeric), public.staff_check_out(text, numeric, numeric), public.staff_get_status(text), public.staff_get_records(text, date, date), public.staff_get_pay_records(text), public.staff_get_notifications(text, boolean), public.staff_mark_notification_read(text, uuid), public.staff_request_leave(text, date, date, text), public.staff_request_loan(text, numeric, text) to anon, authenticated;
 
 do $$
 begin
