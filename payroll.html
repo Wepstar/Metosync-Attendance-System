@@ -27,10 +27,11 @@
 </style>
 <style>.topbar{background:var(--green)}</style>
 <style>.brand-logo{width:37px;height:37px;border-radius:12px;background:white;object-fit:contain;padding:3px}</style>
+<style>.topbar{min-height:88px}.brand{align-items:center}.brand-copy{display:flex;flex-direction:column;gap:2px}.brand-copy small{font-family:monospace;font-size:12px;font-weight:500;color:#d9eee5}</style>
 </head>
 <body>
 <div class="window">
-<header class="topbar"><div class="brand"><span class="brand-mark">AS</span><span id="organizationName">Organization</span></div><div class="suite"><span class="window-title">Metosync Attendance and Payroll</span><div class="window-controls"><button title="Minimize" aria-label="Minimize" onclick="toast('Window minimized')">−</button><button title="Maximize" aria-label="Maximize" onclick="document.querySelector('.window').classList.toggle('maximized')">□</button><button title="Close" aria-label="Close" onclick="history.back()">×</button></div></div></header>
+<header class="topbar"><div class="brand"><span class="brand-mark">AS</span><span class="brand-copy"><strong id="organizationName">Organization</strong><small id="organizationCode">Company payroll</small></span></div><div class="suite"><span class="window-title">Metosync Attendance and Payroll</span><div class="window-controls"><button title="Minimize" aria-label="Minimize" onclick="toast('Window minimized')">−</button><button title="Maximize" aria-label="Maximize" onclick="document.querySelector('.window').classList.toggle('maximized')">□</button><button title="Close" aria-label="Close" onclick="history.back()">×</button></div></div></header>
 <main class="content">
 <div class="page-head"><div><div class="eyebrow">Payroll workspace / 01</div><h1 class="display">General Payroll</h1></div><div class="period-pill">No payroll run selected</div></div>
 <section class="panel" id="general">
@@ -60,7 +61,7 @@ async function loadOrganizationBrand() {
 	const company = data && data[0];
 	if (!company) return;
 	const brand = document.querySelector('.brand');
-	brand.innerHTML = `<img class="brand-logo" src="${company.company_logo_url || 'metosync-logo.png'}" alt="${company.company_name} logo"><span>${company.company_name}</span>`;
+	brand.innerHTML = `<img class="brand-logo" src="${company.company_logo_url || 'metosync-logo.png'}" alt="${company.company_name} logo"><span class="brand-copy"><strong>${company.company_name}</strong><small>${company.company_code || companyCode}</small></span>`;
 }
 const people = [];
 loadOrganizationBrand().catch(() => {});

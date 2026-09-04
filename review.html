@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Metosync Payroll and Taxes Suite - Final Review</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="shared.js?v=3"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -16,6 +18,7 @@
 </style>
 <style>.topbar{background:var(--green-dark)}</style>
 <style>.brand-logo{width:37px;height:37px;border-radius:12px;background:white;object-fit:contain;padding:3px}</style>
+<style>.topbar{min-height:88px}.brand{align-items:center}.brand-copy{display:flex;flex-direction:column;gap:2px}.brand-copy small{font-family:monospace;font-size:12px;font-weight:500;color:#d9eee5}</style>
 <style>.workflow-nav{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 18px}.workflow-nav a{text-decoration:none;color:var(--muted);border:1px solid var(--line);background:white;border-radius:10px;padding:9px 13px;font-size:13px;font-weight:700}.workflow-nav a:hover{color:var(--green);border-color:var(--green)}.workflow-nav a.active{color:white;background:var(--green);border-color:var(--green)}</style>
 </head>
 <body>
@@ -38,6 +41,18 @@ function cash(value){return `GHS ${value.toLocaleString('en-GH',{minimumFraction
 function render(list=people){document.getElementById('reviewRows').innerHTML=list.length ? list.map(p=>`<tr><td><span class="name">${p[0]}</span><span class="meta">Permanent staff</span></td><td class="code">${p[1]||'—'}</td><td class="money gross">${cash(p[2])}</td><td class="money tax">− ${cash(p[3])}</td><td class="money net">${cash(p[4])}</td></tr>`).join('') : '<tr><td colspan="5" class="text-center text-gray-400 py-8">No payroll data yet.</td></tr>';const totals=people.reduce((a,p)=>[a[0]+p[2],a[1]+p[3],a[2]+p[4]],[0,0,0]);document.getElementById('grossTotal').textContent=cash(totals[0]);document.getElementById('taxTotal').textContent=cash(totals[1]);document.getElementById('netTotal').textContent=cash(totals[2]);}
 document.getElementById('search').oninput=e=>{const q=e.target.value.toLowerCase();render(people.filter(p=>p.join(' ').toLowerCase().includes(q)))};function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2400)}
 let paymentLocked=false;document.getElementById('makePaymentBtn').onclick=()=>{if(paymentLocked)return;const medium=document.querySelector('input[name="paymentMedium"]:checked').value;document.getElementById('paymentSummary').textContent=`This will pay ${document.getElementById('netTotal').textContent} via ${medium==='bank'?'bank account':'mobile money'}.`;document.getElementById('paymentModal').classList.add('open');};document.getElementById('paymentYes').onclick=()=>{const state=document.getElementById('paymentState');paymentLocked=true;document.getElementById('paymentModal').classList.remove('open');document.getElementById('makePaymentBtn').disabled=true;document.getElementById('makePaymentBtn').textContent='Payment processing...';state.textContent='Payment gateway is not configured. No payment was sent.';state.style.color='var(--red)';};render();
+document.querySelector('.brand').innerHTML = `<span class="brand-mark">AS</span><span class="brand-copy"><strong>Organization</strong><small>Company payroll</small></span>`;
+</script>
+<script>
+const reviewCompanyCode = new URLSearchParams(window.location.search).get('company') || '';
+async function loadReviewOrganizationBrand() {
+	if (!reviewCompanyCode || !window.supabase) return;
+	const { data } = await sb.rpc('staff_get_company', { p_company_code: reviewCompanyCode });
+	const company = data && data[0];
+	if (!company) return;
+	document.querySelector('.brand').innerHTML = `<img class="brand-logo" src="${company.company_logo_url || 'metosync-logo.png'}" alt="${company.company_name} logo"><span class="brand-copy"><strong>${company.company_name}</strong><small>${company.company_code || reviewCompanyCode}</small></span>`;
+}
+loadReviewOrganizationBrand().catch(() => {});
 </script>
 </body>
 </html>

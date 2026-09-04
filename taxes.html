@@ -21,10 +21,11 @@
 </style>
 <style>.topbar{background:var(--green)}</style>
 <style>.brand-logo{width:37px;height:37px;border-radius:12px;background:white;object-fit:contain;padding:3px}</style>
+<style>.topbar{min-height:88px}.brand{align-items:center}.brand-copy{display:flex;flex-direction:column;gap:2px}.brand-copy small{font-family:monospace;font-size:12px;font-weight:500;color:#d9eee5}</style>
 </head>
 <body>
 <div class="window">
-<header class="topbar"><div class="brand"><span class="brand-mark">AS</span><span>AS Metosync</span></div><div class="suite"><span class="window-title">Metosync Payroll and Taxes Suite</span><div class="window-controls"><button title="Minimize" aria-label="Minimize" onclick="toast('Window minimized')">−</button><button title="Maximize" aria-label="Maximize" onclick="document.querySelector('.window').classList.toggle('maximized')">□</button><button title="Close" aria-label="Close" onclick="history.back()">×</button></div></div></header>
+<header class="topbar"><div class="brand"><span class="brand-mark">AS</span><span class="brand-copy"><strong>Organization</strong><small>Company payroll</small></span></div><div class="suite"><span class="window-title">Metosync Attendance and Payroll</span><div class="window-controls"><button title="Minimize" aria-label="Minimize" onclick="toast('Window minimized')">−</button><button title="Maximize" aria-label="Maximize" onclick="document.querySelector('.window').classList.toggle('maximized')">□</button><button title="Close" aria-label="Close" onclick="history.back()">×</button></div></div></header>
 <main class="content">
 <div class="page-head"><div><div class="eyebrow">Payroll workspace / 02</div><h1 class="display">Taxes &amp; Incentives</h1></div><div class="period-pill">Selected staff: <strong id="selectedCount">0</strong></div></div>
 <nav class="workflow-nav" aria-label="Payroll workflow"><a href="payroll.html">← 01 Payroll</a><a class="active" href="taxes.html" aria-current="page">02 Taxes &amp; Incentives</a><a href="review.html">03 Final Review →</a></nav>
@@ -54,7 +55,7 @@ async function loadOrganizationBrand() {
   if (!code || !window.supabase) return;
   const { data } = await sb.rpc('staff_get_company', { p_company_code: code });
   const company = data && data[0];
-  if (company) document.querySelector('.brand').innerHTML = `<img class="brand-logo" src="${company.company_logo_url || 'metosync-logo.png'}" alt="${company.company_name} logo"><span>${company.company_name}</span>`;
+  if (company) document.querySelector('.brand').innerHTML = `<img class="brand-logo" src="${company.company_logo_url || 'metosync-logo.png'}" alt="${company.company_name} logo"><span class="brand-copy"><strong>${company.company_name}</strong><small>${company.company_code || code}</small></span>`;
 }
 loadOrganizationBrand().catch(() => {});
 document.querySelector('.window-title').textContent = 'Metosync Attendance and Payroll';
