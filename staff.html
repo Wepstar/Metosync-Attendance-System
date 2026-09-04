@@ -52,7 +52,8 @@ function formatTime(value) { return value ? new Date(value).toLocaleTimeString([
 function formatMoney(value, currency) { return `${currency || ''} ${Number(value || 0).toFixed(2)}`.trim(); }
 
 function header(title, subtitle) {
-  return `<header class="staff-hero text-white rounded-2xl px-5 py-5 mb-5 shadow-lg"><div class="flex items-center justify-between gap-3"><div><p class="text-xs uppercase tracking-widest text-white/70">Company Attendance</p><h1 class="text-xl font-bold">${title}</h1></div><span class="status-dot" title="Secure session"></span></div><p class="text-sm text-white/80 mt-2">${subtitle}</p></header>`;
+  const identity = company ? `<div class="flex items-center gap-3 mb-4"><img src="${escapeHtml(company.logo_url || 'metosync-logo.png')}" alt="${escapeHtml(company.name)} logo" class="w-12 h-12 rounded-xl object-contain bg-white p-1"><div><p class="text-xs uppercase tracking-widest text-white/70">Company Attendance</p><p class="font-semibold">${escapeHtml(company.name)}</p></div></div>` : '';
+  return `<header class="staff-hero text-white rounded-2xl px-5 py-5 mb-5 shadow-lg">${identity}<div class="flex items-center justify-between gap-3"><h1 class="text-xl font-bold">${title}</h1><span class="status-dot" title="Secure session"></span></div><p class="text-sm text-white/80 mt-2">${subtitle}</p></header>`;
 }
 function render() {
   if (screen === 'invalid-link') return renderInvalidLink();
@@ -68,8 +69,7 @@ function renderInvalidLink() {
     <section class="mt-card p-6 text-center"><p class="text-sm text-gray-600">Please ask your company administrator to send the official check-in link.</p></section>`;
 }
 function renderPhone() {
-  const companyHeader = company ? `${escapeHtml(company.name)} attendance` : 'Staff attendance';
-  app().innerHTML = `${company ? `<div class="mt-card p-4 mb-4 flex items-center gap-3"><img src="${escapeHtml(company.logo_url || 'metosync-logo.png')}" alt="${escapeHtml(company.name)} logo" class="w-12 h-12 rounded-xl object-contain"><div><p class="text-xs text-gray-500">Company</p><strong>${escapeHtml(company.name)}</strong></div></div>` : ''}${header(companyHeader, 'Enter your phone number to continue.')}
+  app().innerHTML = `${header('Staff Check-In', 'Enter your phone number to continue.')}
     <section class="mt-card p-6"><label for="phoneInput" class="block text-sm font-semibold text-gray-700 mb-2">Phone number</label>
     <input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel" class="w-full border rounded-xl px-4 py-3 text-lg" placeholder="e.g. 050 123 4567" value="${escapeHtml(phone)}">
     <button id="continueBtn" type="button" class="mt-btn-primary w-full mt-4">${loadingLabel('Continue')}</button>${errorHtml()}</section>`;
@@ -167,7 +167,7 @@ async function loadDashboardData() {
   staff = staff || { id: data[0].staff_id, full_name: data[0].full_name };
 }
 async function renderDashboard() {
-  app().innerHTML = `${header('Staff Dashboard', `Welcome, ${escapeHtml(staff?.full_name || 'staff member')}.`)}<section class="mt-card p-1 mb-4 flex flex-wrap gap-1"><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'records' ? 'tab-active' : ''}" data-tab="records">View My Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'pay' ? 'tab-active' : ''}" data-tab="pay">Pay Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'notifications' ? 'tab-active' : ''}" data-tab="notifications">Notifications</button></section><div id="dashboardContent" class="mt-card p-5"><p class="text-center text-gray-500">Loading...</p></div><button id="logoutBtn" type="button" class="block mx-auto mt-5 text-sm text-gray-500">Sign out</button>`;
+  app().innerHTML = `${header('My Attendance &amp; Pay Records', `Welcome, ${escapeHtml(staff?.full_name || 'staff member')}.`)}<section class="mt-card p-1 mb-4 flex flex-wrap gap-1"><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'records' ? 'tab-active' : ''}" data-tab="records">View My Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'pay' ? 'tab-active' : ''}" data-tab="pay">Pay Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'notifications' ? 'tab-active' : ''}" data-tab="notifications">Notifications</button></section><div id="dashboardContent" class="mt-card p-5"><p class="text-center text-gray-500">Loading...</p></div><button id="logoutBtn" type="button" class="block mx-auto mt-5 text-sm text-gray-500">Sign out</button>`;
   document.querySelectorAll('.tab').forEach(button => button.onclick = () => { dashboardTab = button.dataset.tab; renderDashboard(); });
   document.getElementById('logoutBtn').onclick = () => clearSession();
   try {

@@ -177,7 +177,7 @@ begin
   end if;
 
   update public.staff_login_challenges set used_at = now() where id = challenge.id;
-  delete from public.staff_sessions where staff_id = staff_row.id and expires_at <= now();
+  delete from public.staff_sessions as ss where ss.staff_id = staff_row.id and ss.expires_at <= now();
   raw_session := encode(gen_random_bytes(32), 'hex');
   insert into public.staff_sessions (staff_id, token_hash, expires_at)
   values (staff_row.id, encode(digest(raw_session, 'sha256'), 'hex'), session_expiry);
@@ -199,10 +199,10 @@ security definer
 stable
 set search_path = public, extensions
 as $$
-  select staff_id
-  from public.staff_sessions
-  where token_hash = encode(digest(p_session_token, 'sha256'), 'hex')
-    and expires_at > now()
+  select ss.staff_id
+  from public.staff_sessions ss
+  where ss.token_hash = encode(digest(p_session_token, 'sha256'), 'hex')
+    and ss.expires_at > now()
 $$;
 
 create or replace function public.staff_check_in(
@@ -222,7 +222,7 @@ begin
   select s.* into current_staff from public.staff s where s.id = public.staff_session_id(p_session_token) and s.status = 'active';
   if current_staff.id is null then raise exception 'Session expired'; end if;
   if p_latitude not between -90 and 90 or p_longitude not between -180 and 180 then raise exception 'Invalid GPS coordinates'; end if;
-  if exists (select 1 from public.attendance where staff_id = current_staff.id and work_date = current_date and check_in is not null and check_out is null) then
+  if exists (select 1 from public.attendance a where a.staff_id = current_staff.id and a.work_date = current_date and a.check_in is not null and a.check_out is null) then
     raise exception 'You are already checked in';
   end if;
 
@@ -251,12 +251,12 @@ declare
 begin
   if current_staff is null then raise exception 'Session expired'; end if;
   if p_latitude not between -90 and 90 or p_longitude not between -180 and 180 then raise exception 'Invalid GPS coordinates'; end if;
-  update public.attendance
+  update public.attendance as a
   set check_out = now(),
       total_hours = round((extract(epoch from (now() - check_in)) / 3600)::numeric, 2),
       source = 'staff', check_out_latitude = p_latitude, check_out_longitude = p_longitude,
       updated_at = now()
-  where staff_id = current_staff and work_date = current_date and check_in is not null and check_out is null
+  where a.staff_id = current_staff and a.work_date = current_date and a.check_in is not null and a.check_out is null
   returning * into result_row;
   if result_row.id is null then raise exception 'No active check-in found'; end if;
   return result_row;
@@ -365,8 +365,8 @@ security definer
 set search_path = public, extensions
 as $$
   with updated as (
-    update public.staff_notifications set read_at = coalesce(read_at, now())
-    where id = p_notification_id and staff_id = public.staff_session_id(p_session_token)
+    update public.staff_notifications as n set read_at = coalesce(n.read_at, now())
+    where n.id = p_notification_id and n.staff_id = public.staff_session_id(p_session_token)
     returning id
   ) select exists (select 1 from updated)
 $$;
