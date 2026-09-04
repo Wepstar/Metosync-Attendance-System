@@ -11,6 +11,28 @@ alter table public.attendance add column if not exists check_in_longitude numeri
 alter table public.attendance add column if not exists check_out_latitude numeric(9,6);
 alter table public.attendance add column if not exists check_out_longitude numeric(9,6);
 
+do $$
+declare
+  source_constraint record;
+  original_check text;
+begin
+  select con.conname, pg_get_expr(con.conbin, con.conrelid) as check_expression into source_constraint
+  from pg_constraint con
+  join pg_class rel on rel.oid = con.conrelid
+  join pg_namespace nsp on nsp.oid = rel.relnamespace
+  where nsp.nspname = 'public'
+    and rel.relname = 'attendance'
+    and con.conname = 'attendance_source_check'
+    and con.contype = 'c';
+
+  if source_constraint.conname is not null then
+    original_check := source_constraint.check_expression;
+    execute 'alter table public.attendance drop constraint attendance_source_check';
+    execute format('alter table public.attendance add constraint attendance_source_check check ((%s) or source = ''staff'')', original_check);
+  end if;
+end;
+$$;
+
 create unique index if not exists attendance_one_record_per_staff_day
   on public.attendance (staff_id, work_date);
 create index if not exists attendance_staff_date_idx
