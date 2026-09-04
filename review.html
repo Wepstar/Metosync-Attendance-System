@@ -14,6 +14,7 @@
 <style>
 .payment-panel{border-top:1px solid var(--line);padding:20px 22px;background:#f3f9f5}.payment-options{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.payment-option{display:flex;align-items:center;gap:8px;background:white;border:1px solid var(--line);border-radius:10px;padding:11px 14px;font-size:13px;font-weight:700;cursor:pointer}.payment-option input{accent-color:var(--green);width:17px;height:17px}.payment-state{min-height:20px;margin:10px 0 0;color:var(--muted);font-size:13px}.payment-modal{position:fixed;inset:0;background:#102f3d99;display:none;align-items:center;justify-content:center;padding:20px;z-index:30}.payment-modal.open{display:flex}.payment-dialog{width:min(430px,100%);background:var(--paper);border-radius:18px;box-shadow:0 20px 60px #102f3d55;padding:24px}.payment-dialog h2{margin:0 0 8px;font-size:21px}.payment-dialog p{color:var(--muted);font-size:14px;line-height:1.5}.payment-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 </style>
+<style>.topbar{background:var(--green-dark)}</style>
 </head>
 <body>
 <div class="window">
@@ -27,6 +28,7 @@
 </main>
 <footer class="statusbar"><span>Record: ◀◀ <strong>1 of 15</strong> ▶ ▶</span><span><input id="search" type="search" placeholder="Search staff..."></span></footer><div class="toast" id="toast"></div><div id="paymentModal" class="payment-modal" role="dialog" aria-modal="true" aria-labelledby="paymentQuestion"><div class="payment-dialog"><h2 id="paymentQuestion">Are you sure you want to make payment?</h2><p id="paymentSummary"></p><div class="payment-dialog-actions"><button id="paymentYes" class="btn primary" type="button">Yes, make payment</button></div></div></div>
 </div>
+<script>document.querySelector('.window-title').textContent = 'Metosync Attendance and Payroll';</script>
 <script>
 const people=[['Ama Mensah','STF-001',4800,480,4320],['Kojo Asare','STF-002',3650,365,3285],['Mabel Owusu','STF-003',5200,520,4680],['Yaw Boateng','STF-004',3900,390,3510],['Esi Arthur','STF-005',4250,425,3825],['Kofi Tetteh','STF-006',3480,348,3132],['Nana Adjei','STF-007',6100,610,5490],['Abena Ofori','STF-008',4050,405,3645],['Kwame Frimpong','STF-009',3720,372,3348],['Akua Sarpong','STF-010',4600,460,4140],['Daniel Asiedu','STF-011',5000,500,4500],['Efua Ntim','STF-012',3870,387,3483],['Michael Addo','STF-013',4300,430,3870],['Linda Quaye','STF-014',4950,495,4455],['Peter Osei','STF-015',3560,356,3204]];
 function cash(value){return `GHS ${value.toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2})}`}

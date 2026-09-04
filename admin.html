@@ -205,7 +205,7 @@ function payrollPreviewHtml(preview, currency) {
 }
 
 function payrollSubTabsHtml() {
-  return `<div class="flex flex-wrap gap-1 mb-4 mt-card p-1">${[['general', 'General Payroll'], ['individual', 'Individual Payroll'], ['taxes', 'Taxes & Incentives']].map(([id, label]) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`).join('')}</div>`;
+  return `<div class="flex flex-wrap gap-1 mb-4 mt-card p-1">${[['general', 'General Payroll'], ['individual', 'Individual Payroll'], ['taxes', 'Taxes & Incentives']].map(([id, label]) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`).join('')}<span class="border-l border-gray-200 mx-1"></span><a href="payroll.html" class="mt-tab">Gross Earnings Workspace</a><a href="taxes.html" class="mt-tab">Taxes Workspace</a><a href="review.html" class="mt-tab">Final Review</a></div>`;
 }
 
 async function loadPayrollContext() {
