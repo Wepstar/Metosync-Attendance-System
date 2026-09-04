@@ -26,10 +26,11 @@
 @media (max-width: 720px) { .workspace-sticky { top: 70px; } }
 </style>
 <style>.topbar{background:var(--green)}</style>
+<style>.brand-logo{width:37px;height:37px;border-radius:12px;background:white;object-fit:contain;padding:3px}</style>
 </head>
 <body>
 <div class="window">
-<header class="topbar"><div class="brand"><span class="brand-mark">AS</span><span>AS Metosync</span></div><div class="suite"><span class="window-title">Metosync Payroll and Taxes Suite</span><div class="window-controls"><button title="Minimize" aria-label="Minimize" onclick="toast('Window minimized')">−</button><button title="Maximize" aria-label="Maximize" onclick="document.querySelector('.window').classList.toggle('maximized')">□</button><button title="Close" aria-label="Close" onclick="history.back()">×</button></div></div></header>
+<header class="topbar"><div class="brand"><span class="brand-mark">AS</span><span id="organizationName">Organization</span></div><div class="suite"><span class="window-title">Metosync Attendance and Payroll</span><div class="window-controls"><button title="Minimize" aria-label="Minimize" onclick="toast('Window minimized')">−</button><button title="Maximize" aria-label="Maximize" onclick="document.querySelector('.window').classList.toggle('maximized')">□</button><button title="Close" aria-label="Close" onclick="history.back()">×</button></div></div></header>
 <main class="content">
 <div class="page-head"><div><div class="eyebrow">Payroll workspace / 01</div><h1 class="display">General Payroll</h1></div><div class="period-pill">No payroll run selected</div></div>
 <section class="panel" id="general">
@@ -51,7 +52,18 @@
 </div>
 <script>
 document.querySelector('.window-title').textContent = 'Metosync Attendance and Payroll';
+const companyCode = new URLSearchParams(window.location.search).get('company') || '';
+document.querySelectorAll('.workflow-nav a').forEach(link => { if (companyCode) link.href += `?company=${encodeURIComponent(companyCode)}`; });
+async function loadOrganizationBrand() {
+	if (!companyCode) return;
+	const { data } = await sb.rpc('staff_get_company', { p_company_code: companyCode });
+	const company = data && data[0];
+	if (!company) return;
+	const brand = document.querySelector('.brand');
+	brand.innerHTML = `<img class="brand-logo" src="${company.company_logo_url || 'metosync-logo.png'}" alt="${company.company_name} logo"><span>${company.company_name}</span>`;
+}
 const people = [];
+loadOrganizationBrand().catch(() => {});
 function renderRows(list=people){document.getElementById('staffRows').innerHTML=list.length ? list.map((p,i)=>`<tr><td><input class="row-check staff-check" type="checkbox" data-index="${i}"></td><td><span class="staff-name">${p[0]}</span><span class="staff-meta">Permanent staff</span></td><td>${p[1]}</td><td>${p[3] || '—'}</td><td class="amount">${p[2]}</td></tr>`).join('') : '<tr><td colspan="5" class="text-center text-gray-400 py-8">No payroll data yet. Add a payroll run or import staff to begin.</td></tr>';updateTotals();}
 function updateTotals(){const total=people.reduce((sum,p)=>sum+Number(p[2].replace(/[^0-9.]/g,'')),0);document.getElementById('grossTotal').textContent=`GHS ${total.toLocaleString('en-GH',{minimumFractionDigits:2})}`;document.getElementById('taxTotal').textContent=[...document.querySelectorAll('.tax-box:checked')].length;document.getElementById('selectedTaxes').textContent=[...document.querySelectorAll('.tax-box:checked')].map(x=>x.parentElement.textContent.trim()).join(', ')||'None';}
 function selectAll(value){document.querySelectorAll('.staff-check').forEach(x=>x.checked=value);document.getElementById('selectAll').checked=value;}
