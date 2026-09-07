@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metosync — Company Onboarding</title>
+<link rel="preconnect" href="https://lqgdyjvfirdhstcmepyr.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://lqgdyjvfirdhstcmepyr.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="shared.js?v=6"></script>
+<style>
+  body{font-family:'Manrope',ui-sans-serif,system-ui,-apple-system,sans-serif;}
+  .dot{width:7px;height:7px;border-radius:9999px;background:rgba(255,255,255,.35);}
+  .dot.active{width:20px;background:#ffffff;}
+  .fld{width:100%;border:1px solid #e5e7eb;border-radius:0.75rem;padding:0.85rem 1rem;font-size:0.9rem;background:#fff;}
+  .fld:focus{outline:none;box-shadow:0 0 0 3px rgba(18,128,92,.15);border-color:#12805c;}
+  .fld:disabled{background:#f3f4f6;cursor:not-allowed;}
+  ::placeholder{color:#9ca3af;}
+  .step-indicator{transition:all .3s ease;}
+  .step-indicator.active{background:#12805c;color:white;}
+  .step-indicator.completed{background:#22c55e;color:white;}
+</style>
+</head>
+<body class="bg-[#f4f7f5] min-h-screen">
+<div class="min-h-screen flex items-center justify-center p-3 sm:p-6">
+  <div class="w-full max-w-6xl bg-white rounded-3xl shadow-xl overflow-hidden grid lg:grid-cols-[38%_62%]">
+
+    <!-- static branding panel -->
+    <div class="relative bg-gradient-to-br from-[#0d4a36] via-[#0a3a2b] to-[#08251c] text-white p-7 sm:p-8 flex flex-col">
+      <img src="metosync-logo.png" class="h-11 mb-8" alt="Metosync">
+
+      <h2 class="text-2xl font-bold leading-tight mb-3">Complete your <span class="text-[#4ade80]">company setup</span></h2>
+      <p class="text-white/70 text-sm leading-relaxed mb-5">We'll guide you through setting up your organization, adding team members, and configuring your preferences.</p>
+      <div class="w-10 h-1 bg-[#4ade80] rounded-full mb-6"></div>
+
+      <!-- Step Progress -->
+      <div class="mb-6">
+        <p class="text-white/90 text-sm font-semibold mb-3">Setup Progress</p>
+        <div class="flex gap-2 flex-wrap">
+          <div id="step1Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">1. Org Details</div>
+          <div id="step2Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">2. Primary Admin</div>
+          <div id="step3Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">3. Secondary Admin</div>
+          <div id="step4Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">4. Payroll Config</div>
+          <div id="step5Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">5. Billing</div>
+          <div id="step6Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">6. Leave Policy</div>
+          <div id="step7Indicator" class="step-indicator px-3 py-1.5 rounded-full text-xs font-medium bg-white/10">7. Compliance</div>
+        </div>
+      </div>
+
+      <div class="space-y-4 mb-8">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 text-[#4ade80] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">100% Secure</p>
+            <p class="text-white/60 text-xs">Enterprise-grade security for your peace of mind.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 text-[#4ade80] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5"><path stroke-linecap="round" d="M4 20V10M12 20V4M20 20v-7"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">All-in-One</p>
+            <p class="text-white/60 text-xs">Attendance, payroll & reports in one simple platform.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 text-[#4ade80] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-5.13a4 4 0 110-8 4 4 0 010 8zm-6 9v-2a4 4 0 013-3.87m10 5.87v-2a4 4 0 00-3-3.87"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">Built for Growth</p>
+            <p class="text-white/60 text-xs">Scales with your team as you grow.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-auto bg-white/10 border border-white/10 rounded-2xl p-4 min-h-[168px]">
+        <p class="text-white/90 text-sm font-semibold mb-3">One platform. Many industries.</p>
+        <div id="industryCard" style="transition:opacity .25s ease;">
+          <div class="text-2xl mb-2">🏫</div>
+          <p class="text-white text-sm font-semibold mb-1">Schools &amp; Educational Institutions</p>
+          <p class="text-[#4ade80] text-xs font-medium mb-2">Teachers and School Administrators</p>
+          <p class="text-white/70 text-sm leading-relaxed">Managing staff attendance no longer has to involve paper registers and manual calculations. Metosync helps schools keep accurate records and save valuable time.</p>
+        </div>
+      </div>
+
+      <div id="industryDots" class="flex items-center gap-1.5 mt-6">
+        <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+      <p class="text-white/40 text-[11px] mt-4">© 2026 Metosync Tech Inc.</p>
+    </div>
+
+    <!-- dynamic form panel -->
+    <div id="app" class="p-6 sm:p-9 max-h-[94vh] overflow-y-auto">
+      <p class="text-gray-400 text-center mt-10">Verifying your invite…</p>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentStep = 1;
+let onboardingData = {};
+let errorMsg = '';
+let companyLogoFile = null;
+const onboardingCode = sessionStorage.getItem('metosync_onboarding_code') || '';
+
+function app() { return document.getElementById('app'); }
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function guardAndInit() {
+  if (!onboardingCode) {
+    window.location.href = 'welcome.html';
+    return;
+  }
+  const { data: isValid } = await sb.rpc('check_onboarding_invite', { p_code: onboardingCode });
+  if (!isValid) {
+    sessionStorage.removeItem('metosync_onboarding_code');
+    window.location.href = 'welcome.html';
+    return;
+  }
+  render();
+}
+
+function updateStepIndicators() {
+  for (let i = 1; i <= 7; i++) {
+    const indicator = document.getElementById(`step${i}Indicator`);
+    if (!indicator) continue;
+    indicator.classList.remove('active', 'completed');
+    if (i < currentStep) {
+      indicator.classList.add('completed');
+    } else if (i === currentStep) {
+      indicator.classList.add('active');
+    }
+  }
+}
+
+function render() {
+  updateStepIndicators();
+  
+  switch(currentStep) {
+    case 1: renderStep1(); break;
+    case 2: renderStep2(); break;
+    case 3: renderStep3(); break;
+    case 4: renderStep4(); break;
+    case 5: renderStep5(); break;
+    case 6: renderStep6(); break;
+    case 7: renderStep7(); break;
+    default: renderStep1();
+  }
+}
+
+// Step 1: Organizational Details
+function renderStep1() {
+  const data = onboardingData.step1 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Organizational Details</h1>
+      <p class="text-sm text-gray-400">Tell us about your company. Fields marked * are required.</p>
+    </div>
+
+    <input id="companyName" autocomplete="off" placeholder="Registered Business Name *" value="${escapeHtml(data.companyName || '')}" class="fld mb-3">
+
+    <label class="block text-sm text-gray-600 mb-4">
+      <span class="block mb-1.5">Company Logo (optional)</span>
+      <div class="flex items-center gap-3">
+        <input id="companyLogo" type="file" accept="image/png,image/jpeg,image/webp" class="fld text-sm">
+        <img id="companyLogoPreview" class="${data.hasLogoFile === true ? '' : 'hidden'} w-12 h-12 object-contain rounded-lg border border-gray-200 shrink-0" alt="Company logo preview">
+      </div>
+    </label>
+
+    <select id="businessType" class="fld mb-3">
+      <option value="">Business Type</option>
+      ${BUSINESS_TYPES.map(type => `<option value="${escapeHtml(type)}" ${data.businessType === type ? 'selected' : ''}>${type}</option>`).join('')}
+    </select>
+
+    <select id="employeeCountRange" class="fld mb-3">
+      <option value="">Number of Employees</option>
+      ${EMPLOYEE_RANGES.map(range => `<option value="${escapeHtml(range)}" ${data.employeeCountRange === range ? 'selected' : ''}>${range}</option>`).join('')}
+    </select>
+
+    <select id="country" class="fld mb-3">
+      <option value="">Country</option>
+      ${COUNTRIES.map(country => `<option value="${escapeHtml(country)}" ${data.country === country ? 'selected' : ''}>${country}</option>`).join('')}
+    </select>
+
+    <select id="currency" class="fld mb-3">
+      <option value="">Currency</option>
+      ${CURRENCIES.map(curr => `<option value="${escapeHtml(curr)}" ${data.currency === curr ? 'selected' : ''}>${curr}</option>`).join('')}
+    </select>
+
+    <input id="address" autocomplete="off" placeholder="Address (Physical Location)" value="${escapeHtml(data.address || '')}" class="fld mb-3">
+    
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <input id="city" autocomplete="off" placeholder="City" value="${escapeHtml(data.city || '')}" class="fld">
+      <input id="state" autocomplete="off" placeholder="State" value="${escapeHtml(data.state || '')}" class="fld">
+    </div>
+    
+    <input id="zipCode" autocomplete="off" placeholder="Zip Code" value="${escapeHtml(data.zipCode || '')}" class="fld mb-5">
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold" disabled>Back</button>
+      <button id="continueBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Continue</button>
+    </div>
+  `;
+
+  document.getElementById('companyLogo').onchange = (e) => {
+    companyLogoFile = e.target.files[0] || null;
+    // Save to data preservation as well
+    onboardingData.step1 = onboardingData.step1 || {};
+    onboardingData.step1.hasLogoFile = !!companyLogoFile;
+    
+    const preview = document.getElementById('companyLogoPreview');
+    if (!companyLogoFile) { preview.classList.add('hidden'); preview.removeAttribute('src'); return; }
+    preview.src = URL.createObjectURL(companyLogoFile);
+    preview.classList.remove('hidden');
+  };
+
+  document.getElementById('continueBtn').onclick = validateAndSaveStep1;
+}
+
+function validateAndSaveStep1() {
+  errorMsg = '';
+  const companyName = document.getElementById('companyName').value.trim();
+  const businessType = document.getElementById('businessType').value;
+  const employeeCountRange = document.getElementById('employeeCountRange').value;
+  const country = document.getElementById('country').value;
+  const currency = document.getElementById('currency').value;
+  const address = document.getElementById('address').value.trim();
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim();
+  const zipCode = document.getElementById('zipCode').value.trim();
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step1 = {
+    companyName, businessType, employeeCountRange, country, currency,
+    address, city, state, zipCode
+  };
+
+  if (!companyName) { errorMsg = 'Registered Business Name is required.'; render(); return; }
+  if (!businessType) { errorMsg = 'Please select a Business Type.'; render(); return; }
+  if (!employeeCountRange) { errorMsg = 'Please select Number of Employees range.'; render(); return; }
+  if (!country) { errorMsg = 'Country is required.'; render(); return; }
+  if (!currency) { errorMsg = 'Currency is required.'; render(); return; }
+
+  currentStep = 2;
+  render();
+}
+
+// Step 2: Primary Personnel
+function renderStep2() {
+  const data = onboardingData.step2 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Primary Personnel</h1>
+      <p class="text-sm text-gray-400">Owner, Director, or Manager information. Fields marked * are required.</p>
+    </div>
+
+    <div class="grid grid-cols-4 gap-2 mb-3">
+      <select id="title" class="fld col-span-1">
+        <option value="">Title</option>
+        <option value="Prof." ${data.title === 'Prof.' ? 'selected' : ''}>Prof.</option>
+        <option value="Dr." ${data.title === 'Dr.' ? 'selected' : ''}>Dr.</option>
+        <option value="Mr." ${data.title === 'Mr.' ? 'selected' : ''}>Mr.</option>
+        <option value="Mrs." ${data.title === 'Mrs.' ? 'selected' : ''}>Mrs.</option>
+        <option value="Ms." ${data.title === 'Ms.' ? 'selected' : ''}>Ms.</option>
+      </select>
+      <input id="firstName" autocomplete="off" placeholder="First Name *" value="${escapeHtml(data.firstName || '')}" class="fld col-span-1">
+      <input id="surname" autocomplete="off" placeholder="Surname *" value="${escapeHtml(data.surname || '')}" class="fld col-span-1">
+      <input id="otherNames" autocomplete="off" placeholder="Other" value="${escapeHtml(data.otherNames || '')}" class="fld col-span-1">
+    </div>
+
+    <input id="position" autocomplete="off" placeholder="Position" value="${escapeHtml(data.position || '')}" class="fld mb-3">
+
+    <select id="systemRole" class="fld mb-3">
+      <option value="">System Role / Access Level</option>
+      ${SYSTEM_ROLES_DISPLAY.map((role, i) => `<option value="${escapeHtml(SYSTEM_ROLES[i])}" ${data.systemRole === SYSTEM_ROLES[i] ? 'selected' : ''}>${role}</option>`).join('')}
+    </select>
+
+    <input id="mobile" autocomplete="off" placeholder="Mobile *" value="${escapeHtml(data.mobile || '')}" class="fld mb-3">
+    <input id="email" type="email" autocomplete="off" placeholder="Email *" value="${escapeHtml(data.email || '')}" class="fld mb-3">
+
+    <div class="relative mb-3">
+      <input id="password" type="password" autocomplete="new-password" placeholder="Choose a password (min 6 characters) *" value="${escapeHtml(data.password || '')}" class="fld pr-11">
+      <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+    <div class="relative mb-5">
+      <input id="password2" type="password" autocomplete="new-password" placeholder="Repeat Password *" value="${escapeHtml(data.password2 || '')}" class="fld pr-11">
+      <button type="button" onclick="toggleEye('password2',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold">Back</button>
+      <button id="continueBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Continue</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { currentStep = 1; render(); };
+  document.getElementById('continueBtn').onclick = validateAndSaveStep2;
+}
+
+function validateAndSaveStep2() {
+  errorMsg = '';
+  const title = document.getElementById('title').value;
+  const firstName = document.getElementById('firstName').value.trim();
+  const surname = document.getElementById('surname').value.trim();
+  const otherNames = document.getElementById('otherNames').value.trim();
+  const position = document.getElementById('position').value.trim();
+  const systemRole = document.getElementById('systemRole').value;
+  const mobile = document.getElementById('mobile').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const password2 = document.getElementById('password2').value;
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step2 = {
+    title, firstName, surname, otherNames, position, systemRole, mobile, email, password
+  };
+
+  if (!firstName || !surname) { errorMsg = 'First Name and Surname are required.'; render(); return; }
+  if (!mobile) { errorMsg = 'Mobile number is required.'; render(); return; }
+  if (!email) { errorMsg = 'Email is required.'; render(); return; }
+  if (password.length < 6) { errorMsg = 'Password must be at least 6 characters.'; render(); return; }
+  if (password !== password2) { errorMsg = 'Passwords do not match.'; render(); return; }
+
+  currentStep = 3;
+  render();
+}
+
+// Step 3: Secondary Personnel
+function renderStep3() {
+  const data = onboardingData.step3 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Secondary Personnel</h1>
+      <p class="text-sm text-gray-400">Finance Officer or Administrator information. Fields marked * are required.</p>
+    </div>
+
+    <div class="grid grid-cols-4 gap-2 mb-3">
+      <select id="title" class="fld col-span-1">
+        <option value="">Title</option>
+        <option value="Prof." ${data.title === 'Prof.' ? 'selected' : ''}>Prof.</option>
+        <option value="Dr." ${data.title === 'Dr.' ? 'selected' : ''}>Dr.</option>
+        <option value="Mr." ${data.title === 'Mr.' ? 'selected' : ''}>Mr.</option>
+        <option value="Mrs." ${data.title === 'Mrs.' ? 'selected' : ''}>Mrs.</option>
+        <option value="Ms." ${data.title === 'Ms.' ? 'selected' : ''}>Ms.</option>
+      </select>
+      <input id="firstName" autocomplete="off" placeholder="First Name *" value="${escapeHtml(data.firstName || '')}" class="fld col-span-1">
+      <input id="surname" autocomplete="off" placeholder="Surname *" value="${escapeHtml(data.surname || '')}" class="fld col-span-1">
+      <input id="otherNames" autocomplete="off" placeholder="Other" value="${escapeHtml(data.otherNames || '')}" class="fld col-span-1">
+    </div>
+
+    <input id="position" autocomplete="off" placeholder="Position" value="${escapeHtml(data.position || '')}" class="fld mb-3">
+
+    <select id="systemRole" class="fld mb-3">
+      <option value="">System Role / Access Level</option>
+      ${SYSTEM_ROLES_DISPLAY.map((role, i) => `<option value="${escapeHtml(SYSTEM_ROLES[i])}" ${data.systemRole === SYSTEM_ROLES[i] ? 'selected' : ''}>${role}</option>`).join('')}
+    </select>
+
+    <input id="mobile" autocomplete="off" placeholder="Mobile *" value="${escapeHtml(data.mobile || '')}" class="fld mb-3">
+    <input id="email" type="email" autocomplete="off" placeholder="Email *" value="${escapeHtml(data.email || '')}" class="fld mb-3">
+
+    <div class="relative mb-3">
+      <input id="password" type="password" autocomplete="new-password" placeholder="Choose a password (min 6 characters) *" value="${escapeHtml(data.password || '')}" class="fld pr-11">
+      <button type="button" onclick="toggleEye('password',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+    <div class="relative mb-5">
+      <input id="password2" type="password" autocomplete="new-password" placeholder="Repeat Password *" value="${escapeHtml(data.password2 || '')}" class="fld pr-11">
+      <button type="button" onclick="toggleEye('password2',this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👁</button>
+    </div>
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold">Back</button>
+      <button id="continueBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Continue</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { currentStep = 2; render(); };
+  document.getElementById('continueBtn').onclick = validateAndSaveStep3;
+}
+
+function validateAndSaveStep3() {
+  errorMsg = '';
+  const title = document.getElementById('title').value;
+  const firstName = document.getElementById('firstName').value.trim();
+  const surname = document.getElementById('surname').value.trim();
+  const otherNames = document.getElementById('otherNames').value.trim();
+  const position = document.getElementById('position').value.trim();
+  const systemRole = document.getElementById('systemRole').value;
+  const mobile = document.getElementById('mobile').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const password2 = document.getElementById('password2').value;
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step3 = {
+    title, firstName, surname, otherNames, position, systemRole, mobile, email, password
+  };
+
+  if (!firstName || !surname) { errorMsg = 'First Name and Surname are required.'; render(); return; }
+  if (!mobile) { errorMsg = 'Mobile number is required.'; render(); return; }
+  if (!email) { errorMsg = 'Email is required.'; render(); return; }
+  if (password.length < 6) { errorMsg = 'Password must be at least 6 characters.'; render(); return; }
+  if (password !== password2) { errorMsg = 'Passwords do not match.'; render(); return; }
+
+  currentStep = 4;
+  render();
+}
+
+// Step 4: Payroll & Compensation Configuration
+function renderStep4() {
+  const data = onboardingData.step4 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Payroll & Compensation Configuration</h1>
+      <p class="text-sm text-gray-400">Set up your payroll processing and compensation structure.</p>
+    </div>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Payroll Frequency</label>
+    <select id="payrollFrequency" class="fld mb-4">
+      <option value="">Select frequency</option>
+      <option value="monthly" ${data.payrollFrequency === 'monthly' ? 'selected' : ''}>Monthly</option>
+      <option value="bi-weekly" ${data.payrollFrequency === 'bi-weekly' ? 'selected' : ''}>Bi-weekly</option>
+      <option value="weekly" ${data.payrollFrequency === 'weekly' ? 'selected' : ''}>Weekly</option>
+    </select>
+
+    <div class="grid grid-cols-2 gap-2 mb-4">
+      <div>
+        <label class="block text-sm text-gray-600 mb-1.5">First Payroll Start Date</label>
+        <input id="payrollStartDate" type="date" value="${escapeHtml(data.payrollStartDate || '')}" class="fld">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-600 mb-1.5">First Payroll End Date</label>
+        <input id="payrollEndDate" type="date" value="${escapeHtml(data.payrollEndDate || '')}" class="fld">
+      </div>
+    </div>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Default Currency</label>
+    <select id="currency" class="fld mb-4">
+      <option value="">Select currency</option>
+      ${CURRENCIES.map(curr => `<option value="${escapeHtml(curr)}" ${data.currency === curr ? 'selected' : ''}>${curr}</option>`).join('')}
+    </select>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Timezone</label>
+    <select id="timezone" class="fld mb-4">
+      <option value="">Select timezone</option>
+      ${TIMEZONES.map(tz => `<option value="${escapeHtml(tz)}" ${data.timezone === tz ? 'selected' : ''}>${tz}</option>`).join('')}
+    </select>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Date Format</label>
+    <select id="dateFormat" class="fld mb-4">
+      <option value="">Select format</option>
+      ${DATE_FORMATS.map(df => `<option value="${escapeHtml(df)}" ${data.dateFormat === df ? 'selected' : ''}>${df}</option>`).join('')}
+    </select>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Compensation Components (select all that apply)</label>
+    <div class="grid grid-cols-2 gap-2 mb-5">
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Base salary" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Base salary') ? 'checked' : ''}>
+        <span>Base salary</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Hourly wage" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Hourly wage') ? 'checked' : ''}>
+        <span>Hourly wage</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Overtime" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Overtime') ? 'checked' : ''}>
+        <span>Overtime</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Bonuses" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Bonuses') ? 'checked' : ''}>
+        <span>Bonuses</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Commissions" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Commissions') ? 'checked' : ''}>
+        <span>Commissions</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Deductions" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Deductions') ? 'checked' : ''}>
+        <span>Deductions</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="Allowances" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('Allowances') ? 'checked' : ''}>
+        <span>Allowances</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" value="All inclusive" class="compensation-checkbox" ${data.compensationComponents && data.compensationComponents.includes('All inclusive') ? 'checked' : ''}>
+        <span>All inclusive</span>
+      </label>
+    </div>
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold">Back</button>
+      <button id="continueBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Continue</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { currentStep = 3; render(); };
+  document.getElementById('continueBtn').onclick = validateAndSaveStep4;
+}
+
+function validateAndSaveStep4() {
+  errorMsg = '';
+  const payrollFrequency = document.getElementById('payrollFrequency').value;
+  const payrollStartDate = document.getElementById('payrollStartDate').value;
+  const payrollEndDate = document.getElementById('payrollEndDate').value;
+  const currency = document.getElementById('currency').value;
+  const timezone = document.getElementById('timezone').value;
+  const dateFormat = document.getElementById('dateFormat').value;
+  
+  const checkedCompensation = [];
+  document.querySelectorAll('.compensation-checkbox:checked').forEach(cb => {
+    checkedCompensation.push(cb.value);
+  });
+
+  const allInclusiveSelected = checkedCompensation.includes('All inclusive');
+  const compensationComponents = allInclusiveSelected ? COMPENSATION_COMPONENTS : checkedCompensation;
+  const earningTypes = allInclusiveSelected
+    ? EARNING_TYPES.filter(t => t !== 'All inclusive')
+    : checkedCompensation.filter(item => EARNING_TYPES.includes(item) && item !== 'All inclusive');
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step4 = {
+    payrollFrequency, payrollStartDate, payrollEndDate, currency, timezone, dateFormat, compensationComponents, earningTypes
+  };
+
+  if (!payrollFrequency) { errorMsg = 'Please select a Payroll Frequency.'; render(); return; }
+  if (!currency) { errorMsg = 'Please select a Default Currency.'; render(); return; }
+  if (!timezone) { errorMsg = 'Please select a Timezone.'; render(); return; }
+  if (!dateFormat) { errorMsg = 'Please select a Date Format.'; render(); return; }
+  if (compensationComponents.length === 0) { errorMsg = 'Please select at least one Compensation Component.'; render(); return; }
+
+  currentStep = 5;
+  render();
+}
+
+// Step 5: Billing & Subscription
+function renderStep5() {
+  const data = onboardingData.step5 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Billing & Subscription</h1>
+      <p class="text-sm text-gray-400">Choose your plan and payment method.</p>
+    </div>
+
+    <label class="block text-sm text-gray-600 mb-3">Select Your Plan</label>
+    <div class="grid grid-cols-2 gap-3 mb-5">
+      <div class="border-2 rounded-xl p-4 cursor-pointer transition ${data.subscriptionPlan === 'trial' ? 'border-[#12805c] bg-[#e8f7ef]' : 'border-gray-200 hover:border-gray-300'}" 
+           onclick="selectPlan('trial')" id="plan-trial">
+        <div class="font-semibold text-[#0d2a4d] mb-1">Trial</div>
+        <div class="text-xs text-gray-500">Free 14-day trial</div>
+        <div class="text-xs text-gray-400 mt-2">Basic features</div>
+      </div>
+      <div class="border-2 rounded-xl p-4 cursor-pointer transition ${data.subscriptionPlan === 'starter' ? 'border-[#12805c] bg-[#e8f7ef]' : 'border-gray-200 hover:border-gray-300'}" 
+           onclick="selectPlan('starter')" id="plan-starter">
+        <div class="font-semibold text-[#0d2a4d] mb-1">Starter</div>
+        <div class="text-xs text-gray-500">GH₵ 50/month</div>
+        <div class="text-xs text-gray-400 mt-2">5 users included</div>
+      </div>
+      <div class="border-2 rounded-xl p-4 cursor-pointer transition ${data.subscriptionPlan === 'professional' ? 'border-[#12805c] bg-[#e8f7ef]' : 'border-gray-200 hover:border-gray-300'}" 
+           onclick="selectPlan('professional')" id="plan-professional">
+        <div class="font-semibold text-[#0d2a4d] mb-1">Professional</div>
+        <div class="text-xs text-gray-500">GH₵ 150/month</div>
+        <div class="text-xs text-gray-400 mt-2">20 users included</div>
+      </div>
+      <div class="border-2 rounded-xl p-4 cursor-pointer transition ${data.subscriptionPlan === 'enterprise' ? 'border-[#12805c] bg-[#e8f7ef]' : 'border-gray-200 hover:border-gray-300'}" 
+           onclick="selectPlan('enterprise')" id="plan-enterprise">
+        <div class="font-semibold text-[#0d2a4d] mb-1">Enterprise</div>
+        <div class="text-xs text-gray-500">Custom pricing</div>
+        <div class="text-xs text-gray-400 mt-2">Unlimited users</div>
+      </div>
+    </div>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Payment Method</label>
+    <select id="paymentMethod" class="fld mb-5">
+      <option value="">Select payment method</option>
+      <option value="cash" ${data.paymentMethod === 'cash' ? 'selected' : ''}>Cash</option>
+      <option value="mobile_money" ${data.paymentMethod === 'mobile_money' ? 'selected' : ''}>Mobile Money</option>
+      <option value="bank_transfer" ${data.paymentMethod === 'bank_transfer' ? 'selected' : ''}>Bank Transfer</option>
+    </select>
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold">Back</button>
+      <button id="continueBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Continue</button>
+    </div>
+  `;
+
+  // Plan selection function
+  window.selectPlan = (plan) => {
+    onboardingData.step5 = onboardingData.step5 || {};
+    onboardingData.step5.subscriptionPlan = plan;
+    renderStep5();
+  };
+
+  document.getElementById('backBtn').onclick = () => { currentStep = 4; render(); };
+  document.getElementById('continueBtn').onclick = validateAndSaveStep5;
+}
+
+function validateAndSaveStep5() {
+  errorMsg = '';
+  const subscriptionPlan = document.getElementById('paymentMethod') ? (onboardingData.step5?.subscriptionPlan || null) : null;
+  const paymentMethod = document.getElementById('paymentMethod')?.value || null;
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step5 = {
+    subscriptionPlan, paymentMethod
+  };
+
+  if (!subscriptionPlan) { errorMsg = 'Please select a Subscription Plan.'; render(); return; }
+  if (!paymentMethod) { errorMsg = 'Please select a Payment Method.'; render(); return; }
+
+  currentStep = 6;
+  render();
+}
+
+
+// Step 6: Leave Policy Defaults
+function renderStep6() {
+  const data = onboardingData.step6 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Leave Policy Defaults</h1>
+      <p class="text-sm text-gray-400">Set default leave policies for your employees.</p>
+    </div>
+
+    <label class="block text-sm text-gray-600 mb-1.5">Annual Leave Days</label>
+    <input id="annualLeaveDays" type="number" placeholder="Default: 20" value="${escapeHtml(data.annualLeaveDays || 20)}" class="fld mb-4">
+
+    <label class="block text-sm text-gray-600 mb-1.5">Sick Leave Accrual Rate (days per month)</label>
+    <input id="sickLeaveRate" type="number" step="0.1" placeholder="Default: 0.5" value="${escapeHtml(data.sickLeaveRate || 0.5)}" class="fld mb-5">
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold">Back</button>
+      <button id="continueBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Continue</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { currentStep = 5; render(); };
+  document.getElementById('continueBtn').onclick = validateAndSaveStep6;
+}
+
+function validateAndSaveStep6() {
+  errorMsg = '';
+  const annualLeaveDays = parseInt(document.getElementById('annualLeaveDays').value) || 20;
+  const sickLeaveRate = parseFloat(document.getElementById('sickLeaveRate').value) || 0.5;
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step6 = {
+    annualLeaveDays, sickLeaveRate
+  };
+
+  if (annualLeaveDays < 0) { errorMsg = 'Annual leave days cannot be negative.'; render(); return; }
+  if (sickLeaveRate < 0) { errorMsg = 'Sick leave rate cannot be negative.'; render(); return; }
+
+  currentStep = 7;
+  render();
+}
+
+// Step 7: Compliance & Policy Acceptance
+function renderStep7() {
+  const data = onboardingData.step7 || {};
+  app().innerHTML = `
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-[#0d2a4d] mb-1">Compliance & Policy Acceptance</h1>
+      <p class="text-sm text-gray-400">Review and accept our policies to complete setup.</p>
+    </div>
+
+    <div class="space-y-3 mb-5">
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="dpaAccepted" type="checkbox" class="mt-1" ${data.dpaAccepted ? 'checked' : ''}>
+        <span><strong>Data Processing Agreement (DPA):</strong> I accept the GDPR/CCPA compliance data processing terms.</span>
+      </label>
+
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="msaAccepted" type="checkbox" class="mt-1" ${data.msaAccepted ? 'checked' : ''}>
+        <span><strong>Master Service Agreement (MSA):</strong> I accept the terms of the Master Service Agreement.</span>
+      </label>
+
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="privacyAccepted" type="checkbox" class="mt-1" ${data.privacyAccepted ? 'checked' : ''}>
+        <span><strong>Privacy Policy:</strong> I acknowledge and accept the privacy policy, including consent to store employee data.</span>
+      </label>
+
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="biometricConsent" type="checkbox" class="mt-1" ${data.biometricConsent ? 'checked' : ''}>
+        <span><strong>Biometric Data Consent:</strong> I consent to store biometric data (fingerprint) for staff identification.</span>
+      </label>
+
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="gpsConsent" type="checkbox" class="mt-1" ${data.gpsConsent ? 'checked' : ''}>
+        <span><strong>GPS Data Consent:</strong> I consent to store GPS location data for attendance tracking.</span>
+      </label>
+
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="directDebitAuth" type="checkbox" class="mt-1" ${data.directDebitAuth ? 'checked' : ''}>
+        <span><strong>Direct Debit Authorization:</strong> I authorize direct debit for payroll tax collection (if applicable).</span>
+      </label>
+
+      <label class="flex items-start gap-3 text-sm text-gray-700">
+        <input id="termsAccepted" type="checkbox" class="mt-1" ${data.termsAccepted ? 'checked' : ''}>
+        <span><strong>Terms and Conditions:</strong> I accept all Metosync terms and conditions. *</span>
+      </label>
+    </div>
+
+    ${errorMsg ? `<p class="text-red-600 text-sm mb-3">${errorMsg}</p>` : ''}
+    <div class="flex gap-3">
+      <button id="backBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 transition text-gray-700 rounded-xl py-3.5 font-semibold">Back</button>
+      <button id="submitBtn" class="flex-1 bg-[#0d2a4d] hover:bg-[#0a2039] transition text-white rounded-xl py-3.5 font-semibold">Complete Setup</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { currentStep = 6; render(); };
+  document.getElementById('submitBtn').onclick = validateAndSubmit;
+}
+
+function validateAndSubmit() {
+  errorMsg = '';
+  const dpaAccepted = document.getElementById('dpaAccepted').checked;
+  const msaAccepted = document.getElementById('msaAccepted').checked;
+  const privacyAccepted = document.getElementById('privacyAccepted').checked;
+  const biometricConsent = document.getElementById('biometricConsent').checked;
+  const gpsConsent = document.getElementById('gpsConsent').checked;
+  const directDebitAuth = document.getElementById('directDebitAuth').checked;
+  const termsAccepted = document.getElementById('termsAccepted').checked;
+
+  // Save data first to preserve it even if validation fails
+  onboardingData.step7 = {
+    dpaAccepted, msaAccepted, privacyAccepted, biometricConsent, gpsConsent, directDebitAuth, termsAccepted
+  };
+
+  if (!termsAccepted) { errorMsg = 'You must accept the Terms and Conditions to continue.'; render(); return; }
+
+  submitOnboarding();
+}
+
+async function submitOnboarding() {
+  errorMsg = '';
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Creating your company account…</p>`;
+
+  try {
+    const s1 = onboardingData.step1;
+    const s2 = onboardingData.step2;
+    const s3 = onboardingData.step3;
+    const s4 = onboardingData.step4;
+    const s5 = onboardingData.step5;
+    const s6 = onboardingData.step6;
+    const s7 = onboardingData.step7;
+
+    // Create primary admin account
+    const signUpResult = await sb.auth.signUp({ 
+      email: s2.email, 
+      password: s2.password 
+    });
+    
+    if (signUpResult.error) {
+      const msg = signUpResult.error.message || '';
+      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already in use') || msg.toLowerCase().includes('user already')) {
+        errorMsg = `An account already exists for ${escapeHtml(s2.email)}. <a href="login.html" class="underline text-[#12805c]">Log in</a> to finish setup, or use a different email.`;
+      } else {
+        errorMsg = msg;
+      }
+      currentStep = 2; render(); return;
+    }
+    
+    if (!signUpResult.data.session) {
+      errorMsg = 'Account created — please confirm your email, then log in to finish setup.';
+      currentStep = 2; render(); return;
+    }
+
+    // Create company and primary admin
+    const { data: companyResult, error: companyError } = await sb.rpc('create_company_and_owner', {
+      p_company_name: s1.companyName,
+      p_invite_code: onboardingCode,
+      p_title: s2.title || null,
+      p_first_name: s2.firstName,
+      p_surname: s2.surname,
+      p_other_names: s2.otherNames || null,
+      p_admin_name: null,
+      p_position: s2.position || null,
+      p_mobile: s2.mobile,
+      p_country: s1.country,
+      p_address: s1.address || null,
+      p_city: s1.city || null,
+      p_state: s1.state || null,
+      p_terms_accepted: s7.termsAccepted,
+      // New organizational parameters
+      p_business_type: s1.businessType,
+      p_employee_count_range: s1.employeeCountRange,
+      p_zip_code: s1.zipCode || null,
+      p_timezone: s4.timezone,
+      p_date_format: s4.dateFormat,
+      p_session_timeout_minutes: 15, // Default value
+      p_service_tier: 'attendance_and_payroll', // Default value
+      p_leave_policy_annual_days: s6.annualLeaveDays,
+      p_leave_policy_sick_rate: s6.sickLeaveRate,
+      // Payroll configuration parameters
+      p_payroll_frequency: s4.payrollFrequency,
+      p_payroll_start_date: s4.payrollStartDate || null,
+      p_payroll_end_date: s4.payrollEndDate || null,
+      p_compensation_components: s4.compensationComponents,
+      p_earning_types: s4.earningTypes,
+      // Billing and subscription parameters
+      p_subscription_plan: s5.subscriptionPlan,
+      p_payment_method: s5.paymentMethod,
+      // Compliance parameters
+      p_dpa_accepted: s7.dpaAccepted,
+      p_msa_accepted: s7.msaAccepted,
+      p_privacy_policy_accepted: s7.privacyAccepted,
+      p_biometric_consent: s7.biometricConsent,
+      p_gps_consent: s7.gpsConsent,
+      p_direct_debit_authorized: s7.directDebitAuth
+    });
+
+    if (companyError) {
+      // Sign out the newly-created auth user so the session is not left orphaned.
+      // The auth account itself cannot be deleted from the frontend without service-role access.
+      try { await sb.auth.signOut(); } catch (e) {}
+      errorMsg = `Company creation failed: ${escapeHtml(companyError.message)}. Your account was created but not linked. <a href="login.html" class="underline text-[#12805c]">Log in</a> or contact support.`;
+      currentStep = 2; render(); return;
+    }
+
+    const companyId = companyResult && (companyResult.company_id || companyResult.id || companyResult.company?.id);
+    if (!companyId) {
+      // Partial success: company function ran but returned no ID. Sign out to avoid orphaning.
+      try { await sb.auth.signOut(); } catch (e) {}
+      errorMsg = 'Company created but ID not returned. Please <a href="login.html" class="underline text-[#12805c]">log in</a> or contact support.';
+      currentStep = 2; render(); return;
+    }
+
+    // Handle logo upload
+    if (companyLogoFile) {
+      const extension = companyLogoFile.type === 'image/png' ? 'png' : companyLogoFile.type === 'image/webp' ? 'webp' : 'jpg';
+      const logoPath = `${companyId}/logo.${extension}`;
+      const { error: uploadError } = await sb.storage.from('org-logo').upload(logoPath, companyLogoFile, { 
+        contentType: companyLogoFile.type, 
+        upsert: true 
+      });
+      
+      if (!uploadError) {
+        const { data: publicUrlData } = sb.storage.from('org-logo').getPublicUrl(logoPath);
+        await sb.from('companies').update({ logo_url: publicUrlData.publicUrl }).eq('id', companyId);
+      }
+    }
+
+    // Create secondary admin (Finance Officer/Administrator)
+    try {
+      // First create auth account for secondary admin
+      const secondarySignUp = await sb.auth.signUp({
+        email: s3.email,
+        password: s3.password
+      });
+
+      if (secondarySignUp.data.session) {
+        // Create secondary admin record
+        await sb.rpc('create_secondary_admin', {
+          p_company_id: companyId,
+          p_title: s3.title || null,
+          p_first_name: s3.firstName,
+          p_surname: s3.surname,
+          p_other_names: s3.otherNames || null,
+          p_position: s3.position || null,
+          p_mobile: s3.mobile,
+          p_email: s3.email,
+          p_system_role: s3.systemRole || 'hr',
+          p_is_primary_contact: false
+        });
+      }
+    } catch (secondaryError) {
+      console.warn('Secondary admin creation failed:', secondaryError);
+      // Continue anyway - primary admin is created
+    }
+
+    // Clear session storage and redirect
+    sessionStorage.removeItem('metosync_onboarding_code');
+    sessionStorage.setItem('metosync_new_company', JSON.stringify(companyResult));
+    window.location.href = 'admin.html';
+
+  } catch (error) {
+    errorMsg = escapeHtml(error.message || 'An error occurred during setup.');
+    currentStep = 2; render();
+  }
+}
+
+// Industry showcase rotation (decorative only)
+const INDUSTRIES = [
+  { emoji: '🏫', title: 'Schools &amp; Educational Institutions', audience: 'Teachers and School Administrators', desc: 'Managing staff attendance no longer has to involve paper registers and manual calculations. Metosync helps schools keep accurate records and save valuable time.' },
+  { emoji: '🌾', title: 'Farms &amp; Agricultural Businesses', audience: 'Farm Owners and Managers', desc: 'Keep track of workers, attendance and daily operations more efficiently while managing a growing workforce.' },
+  { emoji: '🏨', title: 'Hotels, Motels &amp; Restaurants', audience: 'Hospitality Businesses', desc: 'Keep your workforce organized and spend more time focusing on your customers.' },
+  { emoji: '🏗️', title: 'Construction &amp; Engineering Firms', audience: 'Project Managers and Contractors', desc: 'Maintain clearer workforce records across projects and teams.' },
+  { emoji: '💻', title: 'Technology &amp; Digital Businesses', audience: 'Team Leaders and Business Owners', desc: 'Keep workforce information organized whether your team works from one office or multiple locations.' },
+];
+let industryIndex = 0;
+function renderIndustry() {
+  const card = document.getElementById('industryCard');
+  const dotsWrap = document.getElementById('industryDots');
+  if (!card) return;
+  card.style.opacity = 0;
+  setTimeout(() => {
+    const it = INDUSTRIES[industryIndex];
+    card.innerHTML = `
+      <div class="text-2xl mb-2">${it.emoji}</div>
+      <p class="text-white text-sm font-semibold mb-1">${it.title}</p>
+      <p class="text-[#4ade80] text-xs font-medium mb-2">${it.audience}</p>
+      <p class="text-white/70 text-sm leading-relaxed">${it.desc}</p>
+    `;
+    card.style.opacity = 1;
+  }, 200);
+  if (dotsWrap) {
+    dotsWrap.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === industryIndex));
+  }
+}
+setInterval(() => {
+  industryIndex = (industryIndex + 1) % INDUSTRIES.length;
+  renderIndustry();
+}, 4500);
+
+guardAndInit();
+</script>
+</body>
+</html>

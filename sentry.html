@@ -24,7 +24,7 @@
 <footer class="footer"><span>Browser watch is active while this page is open</span><span>Next hardening step: scheduled server-side monitoring</span></footer>
 </div>
 <script>
-const PAGES=['index.html','welcome.html','signup.html','admin.html','platform.html','signin.html','staff.html','payroll.html','taxes.html','review.html'];let results=[];let timer=null;
+const PAGES=['index.html','welcome.html','onboarding.html','signup.html','admin.html','platform.html','signin.html','staff.html','payroll.html','taxes.html','review.html'];let results=[];let timer=null;
 const checksEl=document.getElementById('checks');const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function addCheck(name,status,detail){results.push({name,status,detail});}
 async function scanPage(page){try{const response=await fetch(page,{cache:'no-store'});if(!response.ok){addCheck(`Page: ${page}`,'fail',`HTTP ${response.status}`);return;}const html=await response.text();if(!html.includes('<!DOCTYPE html>')&&!html.includes('<!doctype html>'))addCheck(`Page: ${page}`,'warn','Page loaded without a standard doctype.');else addCheck(`Page: ${page}`,'pass','Page is reachable.');if(page==='admin.html'&&!html.includes('init();'))addCheck('Admin startup','fail','admin.html does not contain its initialization call.');if(['signin.html','staff.html','payroll.html','taxes.html','review.html'].includes(page)&&!html.includes('company'))addCheck(`${page} company context`,'warn','No company context marker found.');}catch(error){addCheck(`Page: ${page}`,'fail','Browser could not fetch this file. Serve the app over HTTP for full scans.');}}

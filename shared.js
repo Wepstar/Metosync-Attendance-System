@@ -10,6 +10,29 @@ const COUNTRIES = ["Afghanistan","Albania","Algeria","Andorra","Angola","Antigua
 
 const CURRENCIES = ["GHS","USD","EUR","GBP","NGN","XOF","CFA","ZAR","KES","CAD"];
 
+// Onboarding constants for multi-step wizard
+const BUSINESS_TYPES = ["School", "Supermarket", "Farm", "Construction", "Technology", "Hospitality", "Other"];
+const EMPLOYEE_RANGES = ["1-50", "51-200", "201-500", "501-1000", "1000+"];
+const SYSTEM_ROLES = ["super_admin", "payroll_manager", "hr", "view_only"];
+const SYSTEM_ROLES_DISPLAY = ["Super Admin", "Payroll Manager", "HR", "View-Only"];
+const SERVICE_TIERS = ["attendance_only", "payroll_only", "attendance_and_payroll", "stores_inventory", "administrator", "all_inclusive"];
+const SERVICE_TIERS_DISPLAY = ["Attendance Only", "Payroll Only", "Attendance & Payroll", "Stores & Inventory", "Administrator", "All Inclusive"];
+const TIMEZONES = ["Africa/Accra", "Africa/Lagos", "Africa/Nairobi", "UTC", "America/New_York", "Europe/London"];
+const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY"];
+const SESSION_TIMEOUTS = [15, 30, 60];
+
+// Payroll configuration constants
+const PAYROLL_FREQUENCIES = ["monthly", "bi-weekly", "weekly"];
+const PAYROLL_FREQUENCIES_DISPLAY = ["Monthly", "Bi-weekly", "Weekly"];
+const EARNING_TYPES = ["Base salary", "Hourly wage", "Overtime", "Bonuses", "Commissions", "All inclusive"];
+const COMPENSATION_COMPONENTS = ["Base salary", "Hourly wage", "Overtime", "Bonuses", "Commissions", "Deductions", "Allowances"];
+
+// Billing and subscription constants
+const SUBSCRIPTION_PLANS = ["trial", "starter", "professional", "enterprise"];
+const SUBSCRIPTION_PLANS_DISPLAY = ["Trial", "Starter", "Professional", "Enterprise"];
+const PAYMENT_METHODS = ["cash", "mobile_money", "bank_transfer"];
+const PAYMENT_METHODS_DISPLAY = ["Cash", "Mobile Money", "Bank Transfer"];
+
 function toggleEye(id, btn) {
   const input = document.getElementById(id);
   const showing = input.type === "text";
