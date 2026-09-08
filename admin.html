@@ -189,23 +189,85 @@ async function renderTabContent() {
 
 function toRad(deg) { return deg * (Math.PI / 180); }
 function haversineMeters(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
   const R = 6371000;
   const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function locationResultCard(row, site) {
+  const distance = haversineMeters(site?.latitude, site?.longitude, row.latitude, row.longitude);
+  const radius = site?.geofence_radius_meters || 100;
+  const within = distance != null && distance <= radius;
+  const statusClass = within ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800';
+  const icon = within ? '&#9989;' : '&#10071;';
+  const statusText = within ? 'Location verified' : 'Outside expected area';
+  const distanceText = distance != null ? `${Math.round(distance)} m from ${escapeHtml(site?.name || 'work site')}` : 'Distance to site cannot be calculated';
+  const mapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.latitude + ',' + row.longitude)}`;
+  return `<div class="rounded-xl ${statusClass} border p-4 mt-2 mt-fade-in"><div class="flex items-center gap-2 mb-2"><span class="text-xl">${icon}</span><p class="font-bold text-lg">${statusText}</p></div><div class="grid grid-cols-2 gap-3 text-sm"><div><p class="text-gray-500">Latitude</p><p class="font-mono font-semibold">${Number(row.latitude).toFixed(6)}</p></div><div><p class="text-gray-500">Longitude</p><p class="font-mono font-semibold">${Number(row.longitude).toFixed(6)}</p></div><div><p class="text-gray-500">Accuracy</p><p>${row.accuracy_meters != null ? `±${Math.round(row.accuracy_meters)} m` : 'Not reported'}</p></div><div><p class="text-gray-500">Distance</p><p>${distanceText}</p></div></div><p class="text-xs text-gray-500 mt-3">Verified at ${new Date(row.verified_at).toLocaleString()}</p><a href="${mapLink}" target="_blank" rel="noopener" class="inline-block mt-3 text-sm font-semibold text-blue-700 hover:underline">Open on map &rarr;</a></div>`;
+}
+
 async function renderLocationChecker(el) {
-  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><h2 class="text-lg font-bold mb-2">Location Checker</h2><p class="text-sm text-gray-500 mb-4">Verify a staff member's real-time GPS location without requiring them to check out.</p><div id="locationCheckerContent"><p class="text-gray-400 text-center mt-4">Loading staff list…</p></div></div>`;
+  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><h2 class="text-lg font-bold mb-2">Location Checker</h2><p class="text-sm text-gray-500 mb-4">Verify staff GPS locations without requiring them to check out.</p><div id="locationCheckerContent"><p class="text-gray-400 text-center mt-4">Loading staff list…</p></div></div>`;
   const content = document.getElementById('locationCheckerContent');
   try {
-    const { data: staff, error } = await sb.from('staff').select('id, full_name, phone, sites(name, latitude, longitude, geofence_radius_meters)').eq('company_id', myProfile.company_id).order('full_name');
-    if (error) throw error;
+    const { data: staff, error: staffError } = await sb.from('staff')
+      .select('id, full_name, phone, sites(name, latitude, longitude, geofence_radius_meters)')
+      .eq('company_id', myProfile.company_id)
+      .order('full_name');
+    if (staffError) throw staffError;
     if (!staff || !staff.length) {
       content.innerHTML = `<p class="text-sm text-gray-500">No staff found. Add staff first.</p>`;
       return;
     }
-    content.innerHTML = `<div class="space-y-3"><label class="block text-sm font-semibold text-gray-700">Select staff member</label><select id="locationStaffSelect" class="w-full border rounded-xl px-4 py-2">${staff.map(s => `<option value="${s.id}" data-site="${encodeURIComponent(JSON.stringify(s.sites || {}))}">${escapeHtml(s.full_name)} — ${escapeHtml(s.phone || 'no phone')}</option>`).join('')}</select><button id="requestLocationBtn" type="button" class="mt-btn-primary w-full">Request Location Capture</button><div id="locationResult" class="mt-3 text-sm"></div></div>`;
+
+    content.innerHTML = `
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700">Select staff member</label>
+          <select id="locationStaffSelect" class="w-full border rounded-xl px-4 py-2 mt-1">
+            ${staff.map(s => `<option value="${s.id}" data-site="${encodeURIComponent(JSON.stringify(s.sites || {}))}">${escapeHtml(s.full_name)} — ${escapeHtml(s.phone || 'no phone')}</option>`).join('')}
+          </select>
+        </div>
+        <button id="requestLocationBtn" type="button" class="mt-btn-primary w-full">Request Location from Selected Staff</button>
+        <button id="requestAllLocationsBtn" type="button" class="w-full rounded-xl border border-blue-300 bg-blue-50 text-blue-800 py-2 font-semibold hover:bg-blue-100 transition">Request Location from All Staff</button>
+        <button id="refreshLocationsBtn" type="button" class="w-full rounded-xl border border-gray-300 text-gray-700 py-2 font-semibold hover:bg-gray-50 transition">Refresh Results Table</button>
+        <div id="locationResult" class="text-sm"></div>
+        <div id="locationResultsTable" class="mt-4"></div>
+      </div>`;
+
+    const renderLatestTable = async () => {
+      const tableEl = document.getElementById('locationResultsTable');
+      tableEl.innerHTML = `<p class="text-gray-500 text-sm">Loading latest locations…</p>`;
+      try {
+        const { data, error } = await sb.rpc('admin_get_latest_locations', { p_company_id: myProfile.company_id });
+        if (error) throw error;
+        const rows = Array.isArray(data) ? data : [];
+        if (!rows.length) {
+          tableEl.innerHTML = `<p class="text-sm text-gray-500">No locations captured yet. Send a request and ask staff to share their location.</p>`;
+          return;
+        }
+        tableEl.innerHTML = `
+          <h3 class="font-semibold text-gray-800 mb-2">Latest staff locations</h3>
+          <div class="overflow-x-auto rounded-xl border">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-gray-600"><tr><th class="px-3 py-2 text-left">Staff</th><th class="px-3 py-2 text-left">Status</th><th class="px-3 py-2 text-left">Distance</th><th class="px-3 py-2 text-left">Verified</th></tr></thead>
+              <tbody>${rows.map(r => {
+                const distance = haversineMeters(r.site_latitude, r.site_longitude, r.latitude, r.longitude);
+                const within = distance != null && distance <= (r.geofence_radius_meters || 100);
+                const status = r.latitude == null ? '<span class="text-amber-600">No location</span>' : (within ? '<span class="text-green-700 font-semibold">Verified</span>' : '<span class="text-red-700 font-semibold">Outside</span>');
+                const distText = distance != null ? `${Math.round(distance)} m` : '-';
+                const timeText = r.verified_at ? new Date(r.verified_at).toLocaleString() : '-';
+                return `<tr class="border-t"><td class="px-3 py-2">${escapeHtml(r.full_name)}</td><td class="px-3 py-2">${status}</td><td class="px-3 py-2">${distText}</td><td class="px-3 py-2 text-gray-500">${timeText}</td></tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        tableEl.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not load locations.')}</p>`;
+      }
+    };
+
     document.getElementById('requestLocationBtn').onclick = async () => {
       const select = document.getElementById('locationStaffSelect');
       const staffId = select.value;
@@ -217,23 +279,33 @@ async function renderLocationChecker(el) {
         if (error) throw error;
         const row = data && (Array.isArray(data) ? data[0] : data);
         if (row && row.latitude != null && row.longitude != null) {
-          const distance = (site.latitude != null && site.longitude != null)
-            ? haversineMeters(site.latitude, site.longitude, row.latitude, row.longitude)
-            : null;
-          const within = distance != null && distance <= (site.geofence_radius_meters || 100);
-          const statusClass = within ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800';
-          const icon = within ? '&#9989;' : '&#10071;';
-          const statusText = within ? 'Location verified' : 'Outside expected area';
-          const distanceText = distance != null ? `${Math.round(distance)} m from ${escapeHtml(site.name || 'work site')}` : 'Distance to site cannot be calculated';
-          const mapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.latitude + ',' + row.longitude)}`;
-          resultEl.innerHTML = `<div class="rounded-xl ${statusClass} border p-4 mt-2 mt-fade-in"><div class="flex items-center gap-2 mb-2"><span class="text-xl">${icon}</span><p class="font-bold text-lg">${statusText}</p></div><div class="grid grid-cols-2 gap-3 text-sm"><div><p class="text-gray-500">Latitude</p><p class="font-mono font-semibold">${Number(row.latitude).toFixed(6)}</p></div><div><p class="text-gray-500">Longitude</p><p class="font-mono font-semibold">${Number(row.longitude).toFixed(6)}</p></div><div><p class="text-gray-500">Accuracy</p><p>${row.accuracy_meters != null ? `±${Math.round(row.accuracy_meters)} m` : 'Not reported'}</p></div><div><p class="text-gray-500">Distance</p><p>${distanceText}</p></div></div><p class="text-xs text-gray-500 mt-3">Verified at ${new Date(row.verified_at).toLocaleString()}</p><a href="${mapLink}" target="_blank" rel="noopener" class="inline-block mt-3 text-sm font-semibold text-blue-700 hover:underline">Open on map &rarr;</a></div>`;
+          resultEl.innerHTML = locationResultCard(row, site);
         } else {
           resultEl.innerHTML = `<div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-800 mt-fade-in"><p class="font-semibold">Location request sent</p><p class="text-sm">The staff member has been notified and must share their location from their device.</p></div>`;
         }
       } catch (err) {
         resultEl.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not request location.')}</p>`;
       }
+      renderLatestTable();
     };
+
+    document.getElementById('requestAllLocationsBtn').onclick = async () => {
+      const resultEl = document.getElementById('locationResult');
+      resultEl.innerHTML = `<p class="text-blue-600">Requesting location from all staff…</p>`;
+      try {
+        const { data, error } = await sb.rpc('admin_request_location_for_all', { p_company_id: myProfile.company_id });
+        if (error) throw error;
+        const count = data || 0;
+        resultEl.innerHTML = `<div class="rounded-xl bg-blue-50 border border-blue-200 p-3 text-blue-800 mt-fade-in"><p class="font-semibold">Mass request sent</p><p class="text-sm">${count} staff member(s) were notified. Refresh the results table after they share their locations.</p></div>`;
+      } catch (err) {
+        resultEl.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not send mass request.')}</p>`;
+      }
+      renderLatestTable();
+    };
+
+    document.getElementById('refreshLocationsBtn').onclick = renderLatestTable;
+
+    await renderLatestTable();
   } catch (err) {
     content.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not load staff.')}</p>`;
   }
