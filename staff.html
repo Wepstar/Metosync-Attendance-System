@@ -521,17 +521,21 @@ function renderCheckin() {
     ? `<p class="text-xs text-gray-500 mt-2">You must be within ${staff.site.geofence_radius_meters} meters of the work site to check in.</p>`
     : '';
   app().innerHTML = `${header('Ready to check in?', `Hello, ${escapeHtml(staff?.full_name || 'there')}. Your location will be captured.`)}
-    <section class="card-modern p-6 text-center"><div class="mx-auto w-16 h-16 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-3xl mb-4">&#128205;</div>
+    <section class="card-modern p-6 text-center fade-in"><div class="mx-auto w-16 h-16 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-3xl mb-4">&#128205;</div>
     <h2 class="text-xl font-semibold text-gray-800">Start your workday</h2><p class="text-sm text-gray-500 mt-2">Check-in will record the current time and GPS location.</p>${geofenceInfo}
-    <button id="checkinBtn" type="button" class="btn-primary w-full mt-6">${loadingLabel('Capture GPS and Check In')}</button>${gpsMessage ? `<p class="text-sm text-green-700 mt-3">${escapeHtml(gpsMessage)}</p>` : ''}${errorHtml()}</section>`;
+    <button id="checkinBtn" type="button" class="btn-primary w-full mt-6">${loadingLabel('Capture GPS and Check In')}</button>
+    <button id="dashboardBtn" type="button" class="w-full mt-3 link-muted text-sm font-medium py-2">View My Dashboard</button>${gpsMessage ? `<p class="text-sm text-green-700 mt-3">${escapeHtml(gpsMessage)}</p>` : ''}${errorHtml()}</section>`;
   document.getElementById('checkinBtn').onclick = () => submitAttendance('in');
+  document.getElementById('dashboardBtn').onclick = () => { screen = 'dashboard'; render(); };
 }
 function renderCheckout() {
   app().innerHTML = `${header('You are checked in', `Hello, ${escapeHtml(staff?.full_name || 'there')}. Check-out is required before another check-in.`)}
-    <section class="card-modern p-6 text-center border-red-200"><div class="mx-auto w-16 h-16 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-3xl mb-4">&#9200;</div>
+    <section class="card-modern p-6 text-center fade-in"><div class="mx-auto w-16 h-16 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-3xl mb-4">&#9200;</div>
     <h2 class="text-xl font-semibold text-gray-800">Work session active</h2><p class="text-sm text-gray-500 mt-2">The check-in page is locked until you check out.</p>
-    <button id="checkoutBtn" type="button" class="btn-danger w-full mt-6">${loadingLabel('Capture GPS and Check Out')}</button>${gpsMessage ? `<p class="text-sm text-green-700 mt-3">${escapeHtml(gpsMessage)}</p>` : ''}${errorHtml()}</section>`;
+    <button id="checkoutBtn" type="button" class="btn-danger w-full mt-6">${loadingLabel('Capture GPS and Check Out')}</button>
+    <button id="dashboardBtn" type="button" class="w-full mt-3 link-muted text-sm font-medium py-2">View My Dashboard</button>${gpsMessage ? `<p class="text-sm text-green-700 mt-3">${escapeHtml(gpsMessage)}</p>` : ''}${errorHtml()}</section>`;
   document.getElementById('checkoutBtn').onclick = () => submitAttendance('out');
+  document.getElementById('dashboardBtn').onclick = () => { screen = 'dashboard'; render(); };
 }
 function renderSuccess() {
   app().innerHTML = `<section class="card-modern p-8 text-center fade-in"><div class="face"><span class="cheek cheek-left"></span><span class="cheek cheek-right"></span><div class="face-mouth"></div></div><h1 class="text-3xl font-bold text-gray-800 mt-8">Congrats!</h1><p class="text-gray-600 mt-2 text-lg">Thanks for coming in.</p><button id="dashboardBtn" type="button" class="btn-primary w-full mt-8">View My Dashboard</button></section>`;
@@ -552,8 +556,19 @@ function connectionBadge() {
   return `<div class="mb-4 rounded-xl alert-green px-4 py-2 text-sm font-medium fade-in">&#128246; Online</div>`;
 }
 
+function dashboardActionCard() {
+  if (openAttendance) {
+    return `<section class="card-modern p-4 mb-4 fade-in"><div class="flex items-center justify-between gap-3"><div><p class="text-xs text-gray-500 uppercase font-semibold tracking-wider">Current status</p><p class="font-semibold text-gray-800">Checked in</p></div><button id="dashCheckoutBtn" type="button" class="btn-danger px-5 py-2 text-sm">Check Out</button></div></section>`;
+  }
+  return `<section class="card-modern p-4 mb-4 fade-in"><div class="flex items-center justify-between gap-3"><div><p class="text-xs text-gray-500 uppercase font-semibold tracking-wider">Current status</p><p class="font-semibold text-gray-800">Not checked in</p></div><button id="dashCheckinBtn" type="button" class="btn-primary px-5 py-2 text-sm">Check In</button></div></section>`;
+}
+
 async function renderDashboard() {
-  app().innerHTML = `${header('My Attendance &amp; Pay Records', `Welcome, ${escapeHtml(staff?.full_name || 'staff member')}.`)}${connectionBadge()}<section class="card-modern p-1 mb-4 flex flex-wrap gap-1"><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'records' ? 'tab-active' : ''}" data-tab="records">View My Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'pay' ? 'tab-active' : ''}" data-tab="pay">Pay Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'notifications' ? 'tab-active' : ''}" data-tab="notifications">Notifications</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'location' ? 'tab-active' : ''}" data-tab="location">Location Checker</button></section><div id="dashboardContent" class="card-modern p-5"><p class="text-center text-gray-500">Loading...</p></div><button id="logoutBtn" type="button" class="block mx-auto mt-5 link-muted text-sm font-medium py-2">Sign out</button>`;
+  app().innerHTML = `${header('My Attendance &amp; Pay Records', `Welcome, ${escapeHtml(staff?.full_name || 'staff member')}.`)}${connectionBadge()}${dashboardActionCard()}<section class="card-modern p-1 mb-4 flex flex-wrap gap-1"><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'records' ? 'tab-active' : ''}" data-tab="records">View My Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'pay' ? 'tab-active' : ''}" data-tab="pay">Pay Records</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'notifications' ? 'tab-active' : ''}" data-tab="notifications">Notifications</button><button class="tab px-3 py-2 rounded-lg text-sm ${dashboardTab === 'location' ? 'tab-active' : ''}" data-tab="location">Location Checker</button></section><div id="dashboardContent" class="card-modern p-5"><p class="text-center text-gray-500">Loading...</p></div><button id="logoutBtn" type="button" class="block mx-auto mt-5 link-muted text-sm font-medium py-2">Sign out</button>`;
+  const dashCheckoutBtn = document.getElementById('dashCheckoutBtn');
+  const dashCheckinBtn = document.getElementById('dashCheckinBtn');
+  if (dashCheckoutBtn) dashCheckoutBtn.onclick = () => { screen = 'checkout'; render(); };
+  if (dashCheckinBtn) dashCheckinBtn.onclick = () => { screen = 'checkin'; render(); };
   document.querySelectorAll('.tab').forEach(button => button.onclick = () => { dashboardTab = button.dataset.tab; renderDashboard(); });
   const retryBtn = document.getElementById('retrySyncBtn');
   if (retryBtn) retryBtn.onclick = () => { busy = true; renderDashboard(); syncQueue().finally(() => { busy = false; }); };
