@@ -336,6 +336,11 @@ async function renderLanding() {
       desc: 'Access your dashboard, manage your organization and more.',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 21h16M5 21V10M19 21V10M3 10l9-6 9 6M7 10v4M12 10v4M17 10v4"/></svg>`
     } : null,
+    state.role === 'owner' ? {
+      id: 'watchguardBtn', tint: '#fef2f2', accent: '#b91c1c', title: 'Watchguard',
+      desc: 'Monitor, review and approve AI-proposed remediation actions across all organizations.',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`
+    } : null,
     {
       id: 'registryBtn', tint: '#eaf2fe', accent: '#1d4ed8', title: 'Registry',
       desc: 'Register new companies and manage company records.',
@@ -401,6 +406,7 @@ async function renderLanding() {
   document.querySelectorAll('[data-card]').forEach(btn => {
     btn.onclick = () => {
       if (btn.dataset.card === 'ownerBtn') { promptSectionPassword('owner'); return; }
+      if (btn.dataset.card === 'watchguardBtn') { promptSectionPassword('watchguard'); return; }
       if (btn.dataset.card === 'registryBtn') { promptSectionPassword('registry'); return; }
       if (btn.dataset.card === 'accountsBtn') { promptSectionPassword('accounts'); return; }
     };
@@ -496,6 +502,7 @@ async function promptSectionPassword(section, customError = '') {
 
 function renderSection(section) {
   if (section === 'owner') return renderOwnerDashboard();
+  if (section === 'watchguard') return renderWatchguardDashboard();
   if (section === 'registry') return renderRegistry();
   app().innerHTML = `
     <div class="mt-card text-center p-6 mt-10">
@@ -773,6 +780,84 @@ async function renderRegistry() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance_status_changes' }, () => renderRegistry())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'company_activity_log' }, () => renderRegistry())
     .subscribe();
+}
+
+async function renderWatchguardDashboard() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading Watchguard…</p>`;
+  const [{ data: findings, error: fErr }, { data: events, error: eErr }] = await Promise.all([
+    sb.rpc('watchguard_open_findings'),
+    sb.rpc('watchguard_event_log', { p_limit: 50 })
+  ]);
+  if (fErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(fErr.message)}</p>`; return; }
+  if (eErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(eErr.message)}</p>`; return; }
+
+  const rows = Array.isArray(findings) ? findings : [];
+  const logRows = Array.isArray(events) ? events : [];
+
+  const severityOrder = { critical: 1, warning: 2, info: 3 };
+  rows.sort((a, b) => (severityOrder[a.severity] || 4) - (severityOrder[b.severity] || 4) || new Date(b.created_at) - new Date(a.created_at));
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🛡️ Watchguard Findings</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+      </div>
+      <div class="mt-card p-5 mb-5">
+        <h2 class="font-medium text-sm mb-3">Open Findings (${rows.length})</h2>
+        <div id="findingsList" class="space-y-3">
+          ${rows.length ? rows.map((r, i) => `
+            <div class="rounded-xl border p-4 ${r.severity === 'critical' ? 'border-red-300 bg-red-50' : r.severity === 'warning' ? 'border-amber-300 bg-amber-50' : 'border-blue-300 bg-blue-50'}">
+              <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
+                <div>
+                  <p class="font-bold text-sm">${escapeHtml(r.rule_name)} <span class="text-xs font-normal text-gray-500">(${r.severity})</span></p>
+                  <p class="text-sm text-gray-700">${escapeHtml(r.company_name || 'Unknown')} — ${escapeHtml(r.description)}</p>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${new Date(r.created_at).toLocaleString()}</span>
+              </div>
+              <div class="text-xs mb-3"><strong>Proposed action:</strong> ${escapeHtml(r.proposed_action || 'none')}</div>
+              <div class="flex flex-wrap gap-2" data-finding="${r.id}">
+                <button type="button" class="approveFindingBtn mt-btn-primary text-xs" data-index="${i}">Approve</button>
+                <button type="button" class="rejectFindingBtn mt-btn-outline text-xs" data-index="${i}">Reject</button>
+              </div>
+              <div class="findingFeedback text-sm mt-2"></div>
+            </div>
+          `).join('') : '<p class="text-gray-400 text-sm">No open findings. The system is healthy.</p>'}
+        </div>
+      </div>
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">Recent Immutable Event Log</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs mt-table">
+            <thead><tr><th class="text-left">Time</th><th class="text-left">Company</th><th class="text-left">Event</th><th class="text-left">Actor</th><th class="text-left">Target</th></tr></thead>
+            <tbody>${logRows.map(e => `<tr class="border-b"><td class="py-2 px-3">${new Date(e.created_at).toLocaleString()}</td><td class="py-2 px-3">${escapeHtml(e.company_name || '')}</td><td class="py-2 px-3">${escapeHtml(e.event_type)}${e.action_name ? ' · ' + escapeHtml(e.action_name) : ''}</td><td class="py-2 px-3">${escapeHtml(e.actor_role || '')}</td><td class="py-2 px-3">${escapeHtml(e.target_table || '')} ${e.target_id ? '·' + e.target_id.slice(0,8) : ''}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+
+  const authUser = state.session ? state.session.user : null;
+  rows.forEach((r, i) => {
+    const card = document.querySelector(`[data-finding="${r.id}"]`);
+    const feedback = card.parentNode.querySelector('.findingFeedback');
+    card.querySelector('.approveFindingBtn').onclick = async () => {
+      if (!authUser) { feedback.innerHTML = '<span class="text-red-600">Not signed in.</span>'; return; }
+      feedback.innerHTML = '<span class="text-blue-600">Approving…</span>';
+      const { data, error } = await sb.rpc('watchguard_approve_action', { p_finding_id: r.id, p_user_id: authUser.id, p_reason: 'Approved from Watchguard dashboard' });
+      feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Approved. Event ${data?.event_id ? data.event_id.slice(0,8) : ''}</span>`;
+      if (!error) card.style.display = 'none';
+    };
+    card.querySelector('.rejectFindingBtn').onclick = async () => {
+      if (!authUser) { feedback.innerHTML = '<span class="text-red-600">Not signed in.</span>'; return; }
+      feedback.innerHTML = '<span class="text-blue-600">Rejecting…</span>';
+      const { data, error } = await sb.rpc('watchguard_reject_action', { p_finding_id: r.id, p_user_id: authUser.id, p_reason: 'Rejected from Watchguard dashboard' });
+      feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-gray-700">Rejected. Event ${data?.event_id ? data.event_id.slice(0,8) : ''}</span>`;
+      if (!error) card.style.display = 'none';
+    };
+  });
 }
 
 init();
