@@ -137,6 +137,7 @@ function renderDashboard() {
     { id: 'staff', label: 'Staff' },
     { id: 'sites', label: 'Sites' },
     { id: 'location', label: 'Location Checker' },
+    { id: 'notifications', label: 'Notifications' },
     plan !== 'payroll' ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' ? { id: 'payroll', label: 'Payroll' } : null,
     plan !== 'attendance' ? { id: 'payroll-history', label: 'Payroll History' } : null,
@@ -176,6 +177,7 @@ async function renderTabContent() {
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'location') return renderLocationChecker(el);
+  if (activeTab === 'notifications') return renderNotificationsAdmin(el);
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
@@ -215,6 +217,66 @@ async function renderLocationChecker(el) {
     };
   } catch (err) {
     content.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not load staff.')}</p>`;
+  }
+}
+
+async function renderNotificationsAdmin(el) {
+  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><h2 class="text-lg font-bold mb-4">Broadcast Notifications</h2><p class="text-sm text-gray-500 mb-4">Send real-time updates to staff (downtime, approvals, announcements).</p><div id="notificationsAdminContent" class="space-y-4"><p class="text-gray-400 text-center">Loading…</p></div></div>`;
+  const content = document.getElementById('notificationsAdminContent');
+  try {
+    const [{ data: staff, error: staffError }, { data: notes, error: notesError }] = await Promise.all([
+      sb.from('staff').select('id, full_name, phone').eq('company_id', myProfile.company_id).order('full_name'),
+      sb.rpc('admin_get_notifications', { p_company_id: myProfile.company_id, p_limit: 20 })
+    ]);
+    if (staffError) throw staffError;
+    if (notesError) throw notesError;
+
+    const staffOptions = (staff || []).map(s => `<option value="${s.id}">${escapeHtml(s.full_name)} — ${escapeHtml(s.phone || 'no phone')}</option>`).join('');
+    const historyRows = (notes || []).length
+      ? notes.map(n => `<tr><td class="px-2 py-2 text-sm">${escapeHtml(n.title)}</td><td class="px-2 py-2 text-sm">${escapeHtml(n.message)}</td><td class="px-2 py-2 text-sm">${n.sent_at ? new Date(n.sent_at).toLocaleString() : '-'}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="text-gray-400 px-2 py-3">No notifications yet.</td></tr>`;
+
+    content.innerHTML = `
+      <div class="border rounded-xl p-4 bg-gray-50">
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Recipient</label>
+        <select id="noteRecipient" class="w-full border rounded-xl px-4 py-2 mb-3"><option value="all">All staff</option>${staffOptions}</select>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Title</label>
+        <input id="noteTitle" type="text" class="w-full border rounded-xl px-4 py-2 mb-3" placeholder="e.g. System downtime notice">
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Message</label>
+        <textarea id="noteMessage" rows="3" class="w-full border rounded-xl px-4 py-2 mb-3" placeholder="Write the notification message…"></textarea>
+        <button id="sendNotificationBtn" type="button" class="mt-btn-primary w-full">Send Notification</button>
+        <div id="sendNoteResult" class="mt-2 text-sm"></div>
+      </div>
+      <div>
+        <h3 class="font-semibold mb-2">Recent broadcasts</h3>
+        <div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Title</th><th>Message</th><th>Sent</th></tr></thead><tbody>${historyRows}</tbody></table></div>
+      </div>`;
+
+    document.getElementById('sendNotificationBtn').onclick = async () => {
+      const recipient = document.getElementById('noteRecipient').value;
+      const title = document.getElementById('noteTitle').value.trim();
+      const message = document.getElementById('noteMessage').value.trim();
+      const resultEl = document.getElementById('sendNoteResult');
+      if (!title || !message) { resultEl.innerHTML = `<p class="text-red-600">Title and message are required.</p>`; return; }
+      resultEl.innerHTML = `<p class="text-blue-600">Sending…</p>`;
+      try {
+        const { error } = await sb.rpc('admin_send_notification', {
+          p_company_id: myProfile.company_id,
+          p_staff_id: recipient === 'all' ? null : recipient,
+          p_title: title,
+          p_message: message
+        });
+        if (error) throw error;
+        document.getElementById('noteTitle').value = '';
+        document.getElementById('noteMessage').value = '';
+        resultEl.innerHTML = `<p class="text-green-600">Notification sent.</p>`;
+        setTimeout(() => renderNotificationsAdmin(el), 1000);
+      } catch (err) {
+        resultEl.innerHTML = `<p class="text-red-600">${escapeHtml(err.message || 'Could not send notification.')}</p>`;
+      }
+    };
+  } catch (err) {
+    content.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not load notifications data.')}</p>`;
   }
 }
 
