@@ -523,6 +523,7 @@ async function renderOwnerDashboard() {
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🏛️ Owner Dashboard</h1>
         <div class="flex items-center gap-3">
           <button id="watchguardMenuBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #b91c1c;">🛡️ Watchguard</button>
+          <button id="notificationSettingsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">🔔 Alerts</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
       </div>
@@ -546,6 +547,7 @@ async function renderOwnerDashboard() {
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
   document.getElementById('watchguardMenuBtn').onclick = () => renderWatchguardDashboard();
+  document.getElementById('notificationSettingsBtn').onclick = () => renderNotificationSettings();
   wireCompanyInteractions(companies || [], true);
   document.getElementById('genInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_platform_invite');
@@ -808,6 +810,127 @@ async function renderWatchguardDashboard() {
       const { data, error } = await sb.rpc('watchguard_reject_action', { p_finding_id: r.id, p_user_id: authUser.id, p_reason: 'Rejected from Watchguard dashboard' });
       feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-gray-700">Rejected. Event ${data?.event_id ? data.event_id.slice(0,8) : ''}</span>`;
       if (!error) card.style.display = 'none';
+    };
+  });
+}
+
+async function renderNotificationSettings() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading notification settings…</p>`;
+  const [{ data: channels, error: chErr }, { data: dispatchUrl, error: cfgErr }] = await Promise.all([
+    sb.rpc('watchguard_list_channels'),
+    sb.rpc('watchguard_get_config', { p_key: 'dispatch_edge_function_url' })
+  ]);
+  if (chErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(chErr.message)}</p>`; return; }
+
+  const rows = Array.isArray(channels) ? channels : [];
+  const edgeUrl = dispatchUrl || '';
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex flex-wrap justify-between items-center gap-3 mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 🔔 Alert Settings</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Owner Dashboard</button>
+      </div>
+      <div class="mt-card p-5 mb-5">
+        <h2 class="font-medium text-sm mb-3">Dispatch Edge Function URL</h2>
+        <p class="text-xs text-gray-500 mb-2">Set this to your deployed <code>dispatch-notification</code> Edge Function URL (e.g. https://yourproject.supabase.co/functions/v1/dispatch-notification).</p>
+        <div class="flex gap-2">
+          <input id="dispatchUrlInput" type="url" class="flex-1 border rounded-lg px-3 py-2 text-sm" placeholder="https://.../functions/v1/dispatch-notification" value="${escapeHtml(edgeUrl)}">
+          <button id="saveDispatchUrlBtn" type="button" class="mt-btn-primary text-sm">Save</button>
+        </div>
+        <p id="dispatchUrlFeedback" class="text-sm mt-2"></p>
+      </div>
+      <div class="mt-card p-5 mb-5">
+        <h2 class="font-medium text-sm mb-3">Add Global Notification Channel</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <select id="channelType" class="border rounded-lg px-3 py-2 text-sm">
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+            <option value="webhook">Webhook</option>
+          </select>
+          <input id="channelEndpoint" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Email / phone / webhook URL">
+          <input id="channelLabel" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Label (e.g. Finance Team)">
+          <select id="channelEvents" class="border rounded-lg px-3 py-2 text-sm">
+            <option value="critical">Critical only</option>
+            <option value="critical,warning">Critical + Warning</option>
+            <option value="critical,warning,info">All</option>
+          </select>
+        </div>
+        <button id="addChannelBtn" type="button" class="mt-btn-primary text-sm">Add Channel</button>
+        <p id="addChannelFeedback" class="text-sm mt-2"></p>
+      </div>
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">Configured Channels</h2>
+        <div class="space-y-2">
+          ${rows.length ? rows.map(c => `<div class="flex justify-between items-center border rounded-xl p-3 ${c.enabled ? 'bg-white' : 'bg-gray-50'}">
+            <div>
+              <p class="font-semibold text-sm">${escapeHtml(c.label)} <span class="text-xs text-gray-500">(${c.channel_type})</span></p>
+              <p class="text-xs text-gray-500">${escapeHtml(c.endpoint)} · ${(c.events_filter || []).join(', ')} · ${c.enabled ? 'Enabled' : 'Disabled'}</p>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" class="toggleChannelBtn mt-btn-outline text-xs" data-id="${c.id}" data-enabled="${c.enabled}">${c.enabled ? 'Disable' : 'Enable'}</button>
+              <button type="button" class="deleteChannelBtn mt-btn-danger-outline text-xs" data-id="${c.id}">Delete</button>
+            </div>
+          </div>`).join('') : '<p class="text-gray-400 text-sm">No channels configured yet.</p>'}
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderOwnerDashboard();
+
+  document.getElementById('saveDispatchUrlBtn').onclick = async () => {
+    const url = document.getElementById('dispatchUrlInput').value.trim();
+    const feedback = document.getElementById('dispatchUrlFeedback');
+    feedback.innerHTML = '<span class="text-blue-600">Saving…</span>';
+    const { error } = await sb.rpc('watchguard_set_config', { p_key: 'dispatch_edge_function_url', p_value: url });
+    feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Dispatch URL saved.</span>`;
+  };
+
+  document.getElementById('addChannelBtn').onclick = async () => {
+    const feedback = document.getElementById('addChannelFeedback');
+    const type = document.getElementById('channelType').value;
+    const endpoint = document.getElementById('channelEndpoint').value.trim();
+    const label = document.getElementById('channelLabel').value.trim();
+    const events = document.getElementById('channelEvents').value.split(',');
+    if (!endpoint || !label) { feedback.innerHTML = '<span class="text-red-600">Endpoint and label are required.</span>'; return; }
+    feedback.innerHTML = '<span class="text-blue-600">Adding…</span>';
+    const { error } = await sb.rpc('watchguard_create_channel', {
+      p_company_id: null,
+      p_channel_type: type,
+      p_label: label,
+      p_endpoint: endpoint,
+      p_events_filter: events,
+      p_is_global: true
+    });
+    if (error) { feedback.innerHTML = `<span class="text-red-600">${escapeHtml(error.message)}</span>`; return; }
+    feedback.innerHTML = '<span class="text-green-700">Channel added.</span>';
+    setTimeout(renderNotificationSettings, 600);
+  };
+
+  document.querySelectorAll('.toggleChannelBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const enabled = btn.dataset.enabled === 'true';
+      const row = rows.find(c => c.id === id);
+      if (!row) return;
+      await sb.rpc('watchguard_update_channel', {
+        p_channel_id: id,
+        p_label: row.label,
+        p_endpoint: row.endpoint,
+        p_metadata: row.metadata || {},
+        p_events_filter: row.events_filter,
+        p_enabled: !enabled
+      });
+      renderNotificationSettings();
+    };
+  });
+
+  document.querySelectorAll('.deleteChannelBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      await sb.rpc('watchguard_delete_channel', { p_channel_id: id });
+      renderNotificationSettings();
     };
   });
 }
