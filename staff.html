@@ -263,6 +263,62 @@ async function verifyPin() {
     setError(error.message);
   }
 }
+function getDeviceFingerprint() {
+  const parts = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    screen.colorDepth,
+    navigator.hardwareConcurrency,
+    navigator.deviceMemory || 'unknown'
+  ];
+  let hash = 0;
+  const text = parts.join('||');
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `fp_${Math.abs(hash).toString(16)}`;
+}
+
+function detectSpoof(coords) {
+  const flags = [];
+  let score = 0;
+
+  // Low accuracy / coarse location can indicate mock or tunneling
+  if (coords.accuracy == null || coords.accuracy > 100) {
+    flags.push(`low_accuracy_${Math.round(coords.accuracy || 0)}m`);
+    score += coords.accuracy > 500 ? 40 : 20;
+  }
+
+  // Timestamp drift: GPS time far from device time
+  const now = Date.now();
+  const posTime = coords.timestamp ? new Date(coords.timestamp).getTime() : now;
+  const driftMinutes = Math.abs(now - posTime) / 60000;
+  if (driftMinutes > 5) {
+    flags.push(`timestamp_drift_${Math.round(driftMinutes)}min`);
+    score += 25;
+  }
+
+  // Automation / headless browser signals
+  if (navigator.webdriver) { flags.push('webdriver'); score += 50; }
+  if (/headless|selenium|phantomjs|webdriver/i.test(navigator.userAgent)) { flags.push('automation_ua'); score += 40; }
+
+  // Impossible travel from last known location
+  if (staff?.lastLocation && staff.lastLocation.lat != null) {
+    const distance = haversineMeters(coords.latitude, coords.longitude, staff.lastLocation.lat, staff.lastLocation.lon);
+    const elapsedHours = Math.max((now - staff.lastLocation.time) / 3600000, 0.001);
+    const speedKmh = distance / 1000 / elapsedHours;
+    if (speedKmh > 500) {
+      flags.push(`impossible_travel_${Math.round(speedKmh)}kmh`);
+      score += 35;
+    }
+  }
+
+  return { score: Math.min(score, 100), flags };
+}
+
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = deg => deg * Math.PI / 180;
@@ -283,7 +339,18 @@ async function submitLocationCheck() {
   busy = true; errorMessage = ''; gpsMessage = 'Capturing your location...'; render();
   try {
     const coords = await requestGps();
-    const { error } = await sb.rpc('staff_location_check', { p_session_token: sessionToken, p_latitude: coords.latitude, p_longitude: coords.longitude });
+    const spoof = detectSpoof(coords);
+    const fingerprint = getDeviceFingerprint();
+    staff.lastLocation = { lat: coords.latitude, lon: coords.longitude, time: Date.now() };
+    const { error } = await sb.rpc('staff_location_check', {
+      p_session_token: sessionToken,
+      p_latitude: coords.latitude,
+      p_longitude: coords.longitude,
+      p_accuracy_meters: coords.accuracy || null,
+      p_device_fingerprint: fingerprint,
+      p_spoof_score: spoof.score,
+      p_spoof_flags: spoof.flags
+    });
     if (error) throw error;
     busy = false; gpsMessage = '✅ Location shared with your employer.'; errorMessage = ''; render();
   } catch (error) {
@@ -315,6 +382,17 @@ async function submitAttendance(action) {
       }
     }
 
+    const spoof = detectSpoof(coords);
+    const fingerprint = getDeviceFingerprint();
+    staff.lastLocation = { lat: coords.latitude, lon: coords.longitude, time: Date.now() };
+
+    // Hard block on high-confidence spoof for check-in
+    if (action === 'in' && spoof.score >= 80) {
+      busy = false; gpsMessage = '';
+      setError(`Suspicious location detected (${spoof.flags.join(', ')}). If this is incorrect, contact your administrator.`);
+      return;
+    }
+
     const rpc = action === 'in' ? 'staff_check_in' : 'staff_check_out';
     try {
       const { error } = await sb.rpc(rpc, {
@@ -322,7 +400,10 @@ async function submitAttendance(action) {
         p_latitude: coords.latitude,
         p_longitude: coords.longitude,
         p_accuracy_meters: coords.accuracy || null,
-        p_device_timestamp: new Date().toISOString()
+        p_device_timestamp: new Date().toISOString(),
+        p_device_fingerprint: fingerprint,
+        p_spoof_score: spoof.score,
+        p_spoof_flags: spoof.flags
       });
       if (error) throw error;
       busy = false; gpsMessage = ''; openAttendance = action === 'in'; screen = action === 'in' ? 'success' : 'dashboard'; errorMessage = ''; render();
