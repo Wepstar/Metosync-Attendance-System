@@ -299,22 +299,33 @@ end;
 $$;
 
 -- Admin requests/reads latest staff location.
+-- Pushes a real-time location-check notification to the staff member.
 CREATE OR REPLACE FUNCTION public.admin_request_location_check(
   p_staff_id uuid,
   p_company_id uuid
 )
 RETURNS public.location_verifications
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
-STABLE
 SET search_path = public
 AS $$
-  select lv.*
+declare
+  latest public.location_verifications%rowtype;
+begin
+  -- Notify the staff device immediately.
+  insert into public.staff_notifications (staff_id, company_id, notification_type, title, message)
+  values (p_staff_id, p_company_id, 'location_check_request', 'Location check requested', 'Your employer has asked you to verify your current location. Tap to share it now.');
+
+  -- Return the most recent verified location if it exists.
+  select lv.* into latest
   from public.location_verifications lv
   join public.staff s on s.id = lv.staff_id
   where lv.staff_id = p_staff_id and s.company_id = p_company_id
   order by lv.verified_at desc
   limit 1;
+
+  return latest;
+end;
 $$;
 
 -- Admin notifications broadcast.

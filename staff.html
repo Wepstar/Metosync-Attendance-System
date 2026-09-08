@@ -173,6 +173,34 @@ async function syncQueue() {
   if (screen === 'dashboard') { errorMessage = 'Offline records synced.'; render(); }
 }
 
+function doVibrate() {
+  if ('vibrate' in navigator) navigator.vibrate([300, 150, 300, 150, 500]);
+}
+
+function playBeep() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.45);
+  } catch (e) { console.warn('Beep failed', e); }
+}
+
+function alertStaffForLocation() {
+  doVibrate();
+  playBeep();
+}
+
 function app() { return document.getElementById('app'); }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
 function setError(message) { errorMessage = message || 'Something went wrong. Please try again.'; busy = false; render(); }
@@ -555,11 +583,26 @@ async function renderLocation(content) {
   document.getElementById('locationCheckBtn').onclick = submitLocationCheck;
 }
 
+function renderNotificationCard(note) {
+  const isLocationRequest = note.notification_type === 'location_check_request' && !note.read_at;
+  const actionButton = isLocationRequest
+    ? `<button type="button" class="locationRequestBtn mt-3 w-full btn-primary text-sm" data-id="${note.id}">&#128205; Share location now</button>`
+    : (!note.read_at ? `<button type="button" class="readNote mt-2 text-xs text-green-700 font-semibold" data-id="${note.id}">Mark as read</button>` : '');
+  const cardClass = isLocationRequest ? 'border-amber-300 bg-amber-50' : (note.read_at ? '' : 'border-green-300 bg-green-50');
+  return `<article class="border rounded-xl p-4 ${cardClass} fade-in"><div class="flex justify-between gap-3"><strong>${escapeHtml(note.title)}</strong><span class="text-xs text-gray-500">${formatTime(note.created_at)}</span></div><p class="text-sm text-gray-600 mt-1">${escapeHtml(note.message)}</p>${actionButton}</article>`;
+}
+
 async function renderNotifications(content) {
   const { data, error } = await sb.rpc('staff_get_notifications', { p_session_token: sessionToken, p_unread_only: false }); if (error) throw error;
-  content.innerHTML = `<div class="flex items-center justify-between mb-4"><h2 class="font-semibold">Notifications</h2><span class="text-xs text-gray-500">Updates refresh automatically</span></div>${data?.length ? `<div class="space-y-3">${data.map(note => `<article class="border rounded-xl p-4 ${note.read_at ? '' : 'border-green-300 bg-green-50'}"><div class="flex justify-between gap-3"><strong>${escapeHtml(note.title)}</strong><span class="text-xs text-gray-500">${formatTime(note.created_at)}</span></div><p class="text-sm text-gray-600 mt-1">${escapeHtml(note.message)}</p>${!note.read_at ? `<button type="button" class="readNote mt-2 text-xs text-green-700 font-semibold" data-id="${note.id}">Mark as read</button>` : ''}</article>`).join('')}</div>` : '<p class="text-sm text-gray-500">You have no notifications.</p>'}`;
+  content.innerHTML = `<div class="flex items-center justify-between mb-4"><h2 class="font-semibold">Notifications</h2><span class="text-xs text-gray-500">Updates refresh automatically</span></div>${data?.length ? `<div class="space-y-3">${data.map(note => renderNotificationCard(note)).join('')}</div>` : '<p class="text-sm text-gray-500">You have no notifications.</p>'}`;
   content.querySelectorAll('.readNote').forEach(button => button.onclick = async () => { const result = await sb.rpc('staff_mark_notification_read', { p_session_token: sessionToken, p_notification_id: button.dataset.id }); if (result.error) return setError(result.error.message); renderDashboard(); });
+  content.querySelectorAll('.locationRequestBtn').forEach(button => button.onclick = async () => {
+    await sb.rpc('staff_mark_notification_read', { p_session_token: sessionToken, p_notification_id: button.dataset.id });
+    dashboardTab = 'location';
+    renderDashboard();
+  });
 }
+
 function clearSession(message) { localStorage.removeItem(STORAGE_KEY); sessionToken = ''; staff = null; openAttendance = null; screen = companyCode ? 'phone' : 'invalid-link'; errorMessage = message || ''; render(); }
 async function restoreSession() {
   if (!sessionToken) return render();
@@ -578,9 +621,31 @@ async function restoreCompany() {
     screen = 'invalid-link'; errorMessage = 'This company attendance link is unavailable right now.'; render();
   }
 }
+async function checkForLocationRequests() {
+  if (!sessionToken) return;
+  try {
+    const { data, error } = await sb.rpc('staff_get_notifications', { p_session_token: sessionToken, p_unread_only: true });
+    if (error || !data) return;
+    const pendingLocation = data.find(n => n.notification_type === 'location_check_request');
+    if (pendingLocation) {
+      alertStaffForLocation();
+      if (screen === 'dashboard' && dashboardTab !== 'location') {
+        dashboardTab = 'location';
+        errorMessage = 'Your employer requested your location. Open the Location Checker tab.';
+        renderDashboard();
+      }
+    }
+  } catch (e) { console.warn('Location request poll failed', e); }
+}
+
 function startNotificationPolling() {
   clearInterval(pollTimer);
-  pollTimer = setInterval(() => { if (sessionToken && screen === 'dashboard' && dashboardTab === 'notifications') renderDashboard(); }, 30000);
+  pollTimer = setInterval(() => {
+    if (sessionToken && screen === 'dashboard') {
+      if (dashboardTab === 'notifications') renderDashboard();
+      else checkForLocationRequests();
+    }
+  }, 15000);
 }
 window.addEventListener('online', () => { isOnline = true; syncQueue(); if (screen === 'dashboard') renderDashboard(); });
 window.addEventListener('offline', () => { isOnline = false; if (screen === 'dashboard') renderDashboard(); });
