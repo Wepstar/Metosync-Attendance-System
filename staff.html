@@ -147,6 +147,13 @@ async function verifyPin() {
 
     sessionToken = result.session_token; localStorage.setItem(STORAGE_KEY, sessionToken);
     staff = { id: result.staff_id, full_name: result.full_name, company_id: result.company_id, site_id: result.site_id };
+    if (result.site_latitude != null && result.site_longitude != null) {
+      staff.site = {
+        latitude: result.site_latitude,
+        longitude: result.site_longitude,
+        geofence_radius_meters: result.geofence_radius_meters || 100
+      };
+    }
     openAttendance = result.already_checked_in;
     busy = false; errorMessage = '';
     screen = openAttendance ? 'checkout' : 'checkin'; render();
@@ -157,6 +164,15 @@ async function verifyPin() {
     setError(error.message);
   }
 }
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = deg => deg * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function requestGps() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('GPS is not available on this device.'));
@@ -183,8 +199,19 @@ async function submitAttendance(action) {
   try {
     const coords = await requestGps();
     gpsMessage = 'Location captured securely.'; render();
+
+    // Geofence enforcement on check-in
+    if (action === 'in' && staff?.site) {
+      const distance = haversineMeters(coords.latitude, coords.longitude, staff.site.latitude, staff.site.longitude);
+      if (distance > staff.site.geofence_radius_meters) {
+        busy = false; gpsMessage = '';
+        setError(`You are about ${Math.round(distance)} meters outside the allowed check-in area. Please move to the work site and try again.`);
+        return;
+      }
+    }
+
     const rpc = action === 'in' ? 'staff_check_in' : 'staff_check_out';
-    const { error } = await sb.rpc(rpc, { p_session_token: sessionToken, p_latitude: coords.latitude, p_longitude: coords.longitude });
+    const { error } = await sb.rpc(rpc, { p_session_token: sessionToken, p_latitude: coords.latitude, p_longitude: coords.longitude, p_accuracy_meters: coords.accuracy || null });
     if (error) throw error;
     busy = false; gpsMessage = ''; openAttendance = action === 'in'; screen = action === 'in' ? 'success' : 'dashboard'; errorMessage = ''; render();
   } catch (error) {
@@ -193,9 +220,12 @@ async function submitAttendance(action) {
   }
 }
 function renderCheckin() {
+  const geofenceInfo = staff?.site
+    ? `<p class="text-xs text-gray-500 mt-2">You must be within ${staff.site.geofence_radius_meters} meters of the work site to check in.</p>`
+    : '';
   app().innerHTML = `${header('Ready to check in?', `Hello, ${escapeHtml(staff?.full_name || 'there')}. Your location will be captured.`)}
     <section class="mt-card p-6 text-center"><div class="mx-auto w-16 h-16 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-3xl mb-4">&#128205;</div>
-    <h2 class="text-xl font-semibold text-gray-800">Start your workday</h2><p class="text-sm text-gray-500 mt-2">Check-in will record the current time and GPS location.</p>
+    <h2 class="text-xl font-semibold text-gray-800">Start your workday</h2><p class="text-sm text-gray-500 mt-2">Check-in will record the current time and GPS location.</p>${geofenceInfo}
     <button id="checkinBtn" type="button" class="mt-btn-primary w-full mt-6">${loadingLabel('Capture GPS and Check In')}</button>${gpsMessage ? `<p class="text-sm text-green-700 mt-3">${escapeHtml(gpsMessage)}</p>` : ''}${errorHtml()}</section>`;
   document.getElementById('checkinBtn').onclick = () => submitAttendance('in');
 }

@@ -473,6 +473,7 @@ async function renderSites(el) {
               <p class="text-sm font-medium">${s.name}</p>
               ${s.address ? `<p class="text-xs text-gray-500">${s.address}</p>` : ''}
               ${s.latitude != null ? `<a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" class="text-xs text-blue-600">📍 View on Map</a>` : `<p class="text-xs text-gray-400">No GPS captured</p>`}
+              ${s.geofence_radius_meters != null ? `<p class="text-xs text-gray-500">Geofence: ${s.geofence_radius_meters} m</p>` : ''}
             </div>
             <button class="deleteSiteBtn mt-icon-btn delete" data-id="${s.id}">🗑</button>
           </div>`).join('')}
@@ -498,6 +499,10 @@ async function renderSites(el) {
                 <button id="captureGpsBtn" type="button" class="mt-btn-outline">📍 Capture GPS</button>
         <span id="gpsStatusWrap" class="text-xs ${capturedLat ? 'text-green-700' : 'text-red-600'}">${gpsStatus}</span>
       </div>
+
+      <label class="text-xs font-medium text-gray-500">Geofence radius (meters)</label>
+      <input id="siteRadius" type="number" min="10" max="5000" value="100" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+      <p class="text-xs text-gray-400 mb-3">Staff must be within this distance of the captured GPS point to check in.</p>
 
       ${errorMsg ? `<p class="text-red-600 text-sm mb-2">${errorMsg}</p>` : ''}
       <button id="addSiteBtn" type="button" class="mt-btn-primary">Add Site</button>
@@ -529,9 +534,10 @@ async function renderSites(el) {
     const country = document.getElementById('siteCountry').value.trim();
     const name = document.getElementById('siteName').value.trim();
     const address = document.getElementById('siteAddress').value.trim();
+    const radius = Number(document.getElementById('siteRadius').value) || 100;
     if (!country) { errorMsg = 'Country is required (Step 1).'; renderSites(el); return; }
     if (!name) { errorMsg = 'Site name is required (Step 2).'; renderSites(el); return; }
-        const { error } = await sb.rpc('add_site', { p_site: { name, country, address: address || null, latitude: capturedLat, longitude: capturedLng } });
+    const { error } = await sb.rpc('add_site', { p_site: { name, country, address: address || null, latitude: capturedLat, longitude: capturedLng, geofence_radius_meters: radius } });
     if (error) { errorMsg = error.message; renderSites(el); return; }
     capturedLat = null; capturedLng = null; gpsStatus = '';
     renderSites(el);
@@ -546,7 +552,7 @@ async function renderSites(el) {
     };
   });
 
-  app().querySelectorAll('#siteCountry, #siteName, #siteAddress').forEach(inp => {
+  app().querySelectorAll('#siteCountry, #siteName, #siteAddress, #siteRadius').forEach(inp => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addSiteBtn').click(); });
   });
 }
