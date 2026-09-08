@@ -1,5 +1,38 @@
 -- Device binding and PIN security upgrade support.
 
+-- Guards: create base tables if missing.
+CREATE TABLE IF NOT EXISTS public.admin_users (
+  id uuid PRIMARY KEY,
+  company_id uuid,
+  system_role text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.staff (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid,
+  site_id uuid,
+  full_name text NOT NULL,
+  phone text,
+  status text DEFAULT 'active',
+  staff_type text,
+  pay_type text,
+  currency text,
+  weekday_rate numeric,
+  weekend_rate numeric,
+  monthly_salary numeric,
+  pin_hash text,
+  device_fingerprint text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.staff_sessions (
+  session_token text PRIMARY KEY,
+  staff_id uuid NOT NULL,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Existing device_fingerprint was added by 012_spoof_detection.sql.
 -- Add pending approval tracking and approval timestamp for admin workflow.
 ALTER TABLE public.staff

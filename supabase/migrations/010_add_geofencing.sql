@@ -1,13 +1,38 @@
 -- Geofencing support for staff check-in/out
 -- Adds geofence radius to sites and geofence metadata to attendance records.
 
+-- Guard: create base tables if this project does not yet have them.
+CREATE TABLE IF NOT EXISTS public.sites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid,
+  name text NOT NULL,
+  country text,
+  address text,
+  latitude numeric,
+  longitude numeric,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.attendance (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid,
+  staff_id uuid,
+  site_id uuid,
+  work_date date,
+  status text,
+  check_in timestamptz,
+  check_out timestamptz,
+  total_hours numeric,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Allow site-level geofence radius (meters). Default 100 m.
 ALTER TABLE public.sites
 ADD COLUMN IF NOT EXISTS geofence_radius_meters integer NOT NULL DEFAULT 100
 CHECK (geofence_radius_meters > 0 AND geofence_radius_meters <= 5000);
 
 -- Capture GPS accuracy and geofence outcome on attendance records.
-ALTER TABLE public.attendance_records
+ALTER TABLE public.attendance
 ADD COLUMN IF NOT EXISTS accuracy_meters numeric,
 ADD COLUMN IF NOT EXISTS geofence_distance_meters numeric,
 ADD COLUMN IF NOT EXISTS geofence_status text CHECK (geofence_status IN ('inside', 'outside', 'unknown'));
