@@ -45,6 +45,7 @@ let lockoutSeconds = 0;
 let isSuspended = false;
 let pendingSyncCount = 0;
 let isOnline = navigator.onLine;
+let deviceStatus = 'trusted'; // 'trusted', 'unrecognized', 'pending'
 
 const OFFLINE_QUEUE_DB = 'metosync_offline_queue';
 const OFFLINE_QUEUE_STORE = 'pending_actions';
@@ -161,6 +162,7 @@ function render() {
   if (screen === 'phone') return renderPhone();
   if (screen === 'pin') return renderPin();
   if (screen === 'suspended') return renderSuspended();
+  if (screen === 'device') return renderDevice();
   if (screen === 'checkin') return renderCheckin();
   if (screen === 'checkout') return renderCheckout();
   if (screen === 'success') return renderSuccess();
@@ -226,13 +228,30 @@ function renderSuspended() {
     <section class="mt-card p-6 text-center"><div class="mx-auto w-16 h-16 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-3xl mb-4">&#128683;</div><h2 class="text-xl font-semibold text-gray-800">Access suspended</h2><p class="text-sm text-gray-500 mt-2">Your account has been locked after repeated failed PIN attempts. An admin must restore your access.</p><button id="backBtn" type="button" class="mt-4 text-sm text-gray-500">Use a different number</button></section>`;
   document.getElementById('backBtn').onclick = () => { screen = 'phone'; errorMessage = ''; isSuspended = false; lockoutSeconds = 0; render(); };
 }
+
+function renderDevice() {
+  const isPending = deviceStatus === 'pending';
+  const title = isPending ? 'Approval request sent' : 'Unrecognized device';
+  const message = isPending
+    ? 'Your administrator has been notified. You will be able to check in once this device is approved.'
+    : 'This device has not been used with your account before. Ask your administrator to approve it, or request approval below.';
+  const actionButton = isPending
+    ? ''
+    : `<button id="requestApprovalBtn" type="button" class="mt-btn-primary w-full mt-4">Request device approval</button>`;
+  app().innerHTML = `${header(title, 'Device binding security check.')}
+    <section class="mt-card p-6 text-center"><div class="mx-auto w-16 h-16 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-3xl mb-4">&#128241;</div>
+    <h2 class="text-xl font-semibold text-gray-800">${title}</h2><p class="text-sm text-gray-500 mt-2">${message}</p>${actionButton}<button id="backBtn" type="button" class="w-full mt-3 text-sm text-gray-500">Use a different number</button>${errorHtml()}</section>`;
+  if (!isPending) document.getElementById('requestApprovalBtn').onclick = requestDeviceApproval;
+  document.getElementById('backBtn').onclick = () => { screen = 'phone'; errorMessage = ''; deviceStatus = 'trusted'; render(); };
+}
 async function verifyPin() {
   if (busy || lockoutSeconds > 0 || isSuspended) return;
   const pin = document.getElementById('pinInput').value;
   if (!/^\d{4}$/.test(pin)) return setError('Enter all 4 digits of your PIN.');
   busy = true; errorMessage = ''; render();
   try {
-    const { data, error } = await sb.rpc('staff_verify_pin', { p_challenge_token: challengeToken, p_pin: pin });
+    const fingerprint = getDeviceFingerprint();
+    const { data, error } = await sb.rpc('staff_verify_pin', { p_challenge_token: challengeToken, p_pin: pin, p_device_fingerprint: fingerprint });
     if (error) throw error;
     const result = data && data[0];
     if (!result) throw new Error('The PIN could not be verified.');
@@ -253,13 +272,31 @@ async function verifyPin() {
         geofence_radius_meters: result.geofence_radius_meters || 100
       };
     }
+    deviceStatus = result.device_status || 'trusted';
     openAttendance = result.already_checked_in;
     busy = false; errorMessage = '';
+    if (deviceStatus === 'unrecognized') { screen = 'device'; render(); return; }
     screen = openAttendance ? 'checkout' : 'checkin'; render();
   } catch (error) {
     if (/lockout/i.test(error.message)) {
       lockoutSeconds = 180; busy = false; screen = 'pin'; render(); return;
     }
+    setError(error.message);
+  }
+}
+
+async function requestDeviceApproval() {
+  if (busy) return;
+  busy = true; errorMessage = ''; render();
+  try {
+    const fingerprint = getDeviceFingerprint();
+    const { error } = await sb.rpc('staff_request_device_approval', { p_session_token: sessionToken, p_device_fingerprint: fingerprint });
+    if (error) throw error;
+    deviceStatus = 'pending';
+    busy = false; errorMessage = '';
+    screen = 'device'; render();
+  } catch (error) {
+    if (/session expired/i.test(error.message)) return clearSession('Your session expired. Please sign in again.');
     setError(error.message);
   }
 }

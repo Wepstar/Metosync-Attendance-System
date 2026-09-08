@@ -637,7 +637,7 @@ async function renderStaff(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
   const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
     sb.from('sites').select('*').eq('company_id', myProfile.company_id).order('country'),
-    sb.from('staff').select('*, sites(name, country)').eq('company_id', myProfile.company_id).order('created_at', { ascending: false })
+    sb.from('staff').select('*, sites(name, country), pending_device_fingerprint, device_fingerprint, device_approved_at').eq('company_id', myProfile.company_id).order('created_at', { ascending: false })
   ]);
   if (sitesErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${sitesErr.message}</p>`; return; }
   if (staffErr) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${staffErr.message}</p>`; return; }
@@ -653,7 +653,14 @@ async function renderStaff(el) {
   const isCasual = staffTypeSelected === 'casual';
   const showPinField = !isCasual || casualPinEnabled;
 
-  const rows = staffList.map(s => `
+  const rows = staffList.map(s => {
+    const hasPending = s.pending_device_fingerprint && s.pending_device_fingerprint !== s.device_fingerprint;
+    const deviceCell = hasPending
+      ? `<span class="text-xs text-amber-600">Pending</span><button class="approveDeviceBtn text-xs text-blue-600 underline ml-2" data-id="${s.id}" data-fp="${escapeHtml(s.pending_device_fingerprint)}">Approve</button>`
+      : s.device_fingerprint
+        ? `<span class="text-xs text-green-600" title="${escapeHtml(s.device_fingerprint)}">Trusted</span>`
+        : `<span class="text-xs text-gray-400">Not set</span>`;
+    return `
     <tr>
       <td><input type="checkbox" class="staffSelectCheck" data-id="${s.id}"></td>
       <td>${s.full_name} ${s.staff_type === 'casual' ? '<span class="text-xs text-gray-400">(Casual)</span>' : ''}</td>
@@ -661,7 +668,9 @@ async function renderStaff(el) {
       <td>${s.sites ? s.sites.name : ''}</td>
       <td>${s.pay_type === 'monthly' ? `${s.currency} ${Number(s.monthly_salary || 0).toFixed(2)}/mo` : `${s.currency} ${Number(s.weekday_rate || 0).toFixed(2)} wkday / ${Number(s.weekend_rate || 0).toFixed(2)} wkend`}</td>
       <td>${statusBadge(s.status)}</td>
-    </tr>`).join('');
+      <td>${deviceCell}</td>
+    </tr>`;
+  }).join('');
 
   el.innerHTML = `
     <div class="mt-card p-4 mb-4 mt-fade-in">
@@ -737,8 +746,8 @@ async function renderStaff(el) {
         <button id="deleteStaffBtn" type="button" class="hidden mt-btn-danger-outline" style="padding: 0.4rem 1rem; font-size: 0.75rem;">Delete Selected</button>
       </div>
       <table class="w-full mt-table">
-        <thead><tr><th></th><th>Name</th><th>Mobile</th><th>Site</th><th>Fixed/Rate</th><th>Status</th></tr></thead>
-        <tbody>${rows || '<tr><td class="text-gray-400 py-4" colspan="6">No staff yet.</td></tr>'}</tbody>
+        <thead><tr><th></th><th>Name</th><th>Mobile</th><th>Site</th><th>Fixed/Rate</th><th>Status</th><th>Device</th></tr></thead>
+        <tbody>${rows || '<tr><td class="text-gray-400 py-4" colspan="7">No staff yet.</td></tr>'}</tbody>
       </table>
     </div>`;
 
@@ -968,6 +977,17 @@ async function renderStaff(el) {
     if (error) { errorMsg = error.message; }
     renderStaff(el);
   };
+
+  document.querySelectorAll('.approveDeviceBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const staffId = btn.dataset.id;
+      const fingerprint = btn.dataset.fp;
+      if (!fingerprint) return;
+      const { error } = await sb.rpc('admin_approve_device', { p_staff_id: staffId, p_device_fingerprint: fingerprint });
+      if (error) { errorMsg = error.message; }
+      renderStaff(el);
+    };
+  });
 
   app().querySelectorAll('#f_name, #f_mobile, #f_department, #f_role, #f_staffcode, #f_pin, #f_weekday, #f_weekend, #f_salary').forEach(inp => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addStaffBtn').click(); });
