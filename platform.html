@@ -336,11 +336,6 @@ async function renderLanding() {
       desc: 'Access your dashboard, manage your organization and more.',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 21h16M5 21V10M19 21V10M3 10l9-6 9 6M7 10v4M12 10v4M17 10v4"/></svg>`
     } : null,
-    state.role === 'owner' ? {
-      id: 'watchguardBtn', tint: '#fef2f2', accent: '#b91c1c', title: 'Watchguard',
-      desc: 'Monitor, review and approve AI-proposed remediation actions across all organizations.',
-      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`
-    } : null,
     {
       id: 'registryBtn', tint: '#eaf2fe', accent: '#1d4ed8', title: 'Registry',
       desc: 'Register new companies and manage company records.',
@@ -406,7 +401,6 @@ async function renderLanding() {
   document.querySelectorAll('[data-card]').forEach(btn => {
     btn.onclick = () => {
       if (btn.dataset.card === 'ownerBtn') { promptSectionPassword('owner'); return; }
-      if (btn.dataset.card === 'watchguardBtn') { promptSectionPassword('watchguard'); return; }
       if (btn.dataset.card === 'registryBtn') { promptSectionPassword('registry'); return; }
       if (btn.dataset.card === 'accountsBtn') { promptSectionPassword('accounts'); return; }
     };
@@ -502,7 +496,6 @@ async function promptSectionPassword(section, customError = '') {
 
 function renderSection(section) {
   if (section === 'owner') return renderOwnerDashboard();
-  if (section === 'watchguard') return renderWatchguardDashboard();
   if (section === 'registry') return renderRegistry();
   app().innerHTML = `
     <div class="mt-card text-center p-6 mt-10">
@@ -539,9 +532,12 @@ async function renderOwnerDashboard() {
 
   app().innerHTML = `
     <div class="registry-page mt-fade-in">
-      <div class="flex justify-between items-center mt-6 mb-4">
+      <div class="flex flex-wrap justify-between items-center gap-3 mt-6 mb-4">
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🏛️ Owner Dashboard</h1>
-        <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+        <div class="flex items-center gap-3">
+          <button id="watchguardMenuBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #b91c1c;">🛡️ Watchguard</button>
+          <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+        </div>
       </div>
       ${statsCardsHtml(statsRow)}
 
@@ -594,6 +590,7 @@ async function renderOwnerDashboard() {
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  document.getElementById('watchguardMenuBtn').onclick = () => renderWatchguardDashboard();
   wireCompanyInteractions(companies || [], true);
   document.getElementById('genInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_platform_invite');
@@ -801,8 +798,8 @@ async function renderWatchguardDashboard() {
   app().innerHTML = `
     <div class="registry-page mt-fade-in">
       <div class="flex justify-between items-center mt-6 mb-4">
-        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">🛡️ Watchguard Findings</h1>
-        <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 🛡️ Watchguard Findings</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Owner Dashboard</button>
       </div>
       <div class="mt-card p-5 mb-5">
         <h2 class="font-medium text-sm mb-3">Open Findings (${rows.length})</h2>
@@ -837,7 +834,7 @@ async function renderWatchguardDashboard() {
       </div>
     </div>`;
 
-  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  document.getElementById('backBtn').onclick = () => renderOwnerDashboard();
 
   const authUser = state.session ? state.session.user : null;
   rows.forEach((r, i) => {
