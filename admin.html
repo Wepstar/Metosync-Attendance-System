@@ -187,19 +187,29 @@ async function renderTabContent() {
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
 }
 
+function toRad(deg) { return deg * (Math.PI / 180); }
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 async function renderLocationChecker(el) {
-  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><h2 class="text-lg font-bold mb-4">Location Checker</h2><p class="text-sm text-gray-500 mb-4">Verify a staff member's real-time GPS location without requiring them to check out.</p><div id="locationCheckerContent"><p class="text-gray-400 text-center mt-4">Loading staff list…</p></div></div>`;
+  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><h2 class="text-lg font-bold mb-2">Location Checker</h2><p class="text-sm text-gray-500 mb-4">Verify a staff member's real-time GPS location without requiring them to check out.</p><div id="locationCheckerContent"><p class="text-gray-400 text-center mt-4">Loading staff list…</p></div></div>`;
   const content = document.getElementById('locationCheckerContent');
   try {
-    const { data: staff, error } = await sb.from('staff').select('id, full_name, phone, sites(name)').eq('company_id', myProfile.company_id).order('full_name');
+    const { data: staff, error } = await sb.from('staff').select('id, full_name, phone, sites(name, latitude, longitude, geofence_radius_meters)').eq('company_id', myProfile.company_id).order('full_name');
     if (error) throw error;
     if (!staff || !staff.length) {
       content.innerHTML = `<p class="text-sm text-gray-500">No staff found. Add staff first.</p>`;
       return;
     }
-    content.innerHTML = `<div class="space-y-3"><label class="block text-sm font-semibold text-gray-700">Select staff member</label><select id="locationStaffSelect" class="w-full border rounded-xl px-4 py-2">${staff.map(s => `<option value="${s.id}">${escapeHtml(s.full_name)} — ${escapeHtml(s.phone || 'no phone')}</option>`).join('')}</select><button id="requestLocationBtn" type="button" class="mt-btn-primary w-full">Request Location Capture</button><div id="locationResult" class="mt-3 text-sm"></div></div>`;
+    content.innerHTML = `<div class="space-y-3"><label class="block text-sm font-semibold text-gray-700">Select staff member</label><select id="locationStaffSelect" class="w-full border rounded-xl px-4 py-2">${staff.map(s => `<option value="${s.id}" data-site='${escapeHtml(JSON.stringify(s.sites || {}))}'>${escapeHtml(s.full_name)} — ${escapeHtml(s.phone || 'no phone')}</option>`).join('')}</select><button id="requestLocationBtn" type="button" class="mt-btn-primary w-full">Request Location Capture</button><div id="locationResult" class="mt-3 text-sm"></div></div>`;
     document.getElementById('requestLocationBtn').onclick = async () => {
-      const staffId = document.getElementById('locationStaffSelect').value;
+      const select = document.getElementById('locationStaffSelect');
+      const staffId = select.value;
+      const site = JSON.parse(select.selectedOptions[0].dataset.site || '{}');
       const resultEl = document.getElementById('locationResult');
       resultEl.innerHTML = `<p class="text-blue-600">Requesting location capture…</p>`;
       try {
@@ -207,9 +217,18 @@ async function renderLocationChecker(el) {
         if (error) throw error;
         const row = data && data[0];
         if (row && row.latitude != null && row.longitude != null) {
-          resultEl.innerHTML = `<div class="rounded-xl bg-green-50 border border-green-200 p-3"><p class="font-semibold text-green-800">Location captured</p><p class="text-gray-600">Lat: ${Number(row.latitude).toFixed(6)}<br>Lng: ${Number(row.longitude).toFixed(6)}</p><p class="text-xs text-gray-500 mt-1">Captured at ${new Date(row.captured_at).toLocaleString()}</p></div>`;
+          const distance = (site.latitude != null && site.longitude != null)
+            ? haversineMeters(site.latitude, site.longitude, row.latitude, row.longitude)
+            : null;
+          const within = distance != null && distance <= (site.geofence_radius_meters || 100);
+          const statusClass = within ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800';
+          const icon = within ? '&#9989;' : '&#10071;';
+          const statusText = within ? 'Location verified' : 'Outside expected area';
+          const distanceText = distance != null ? `${Math.round(distance)} m from ${escapeHtml(site.name || 'work site')}` : 'Distance to site cannot be calculated';
+          const mapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.latitude + ',' + row.longitude)}`;
+          resultEl.innerHTML = `<div class="rounded-xl ${statusClass} border p-4 mt-2 fade-in"><div class="flex items-center gap-2 mb-2"><span class="text-xl">${icon}</span><p class="font-bold text-lg">${statusText}</p></div><div class="grid grid-cols-2 gap-3 text-sm"><div><p class="text-gray-500">Latitude</p><p class="font-mono font-semibold">${Number(row.latitude).toFixed(6)}</p></div><div><p class="text-gray-500">Longitude</p><p class="font-mono font-semibold">${Number(row.longitude).toFixed(6)}</p></div><div><p class="text-gray-500">Accuracy</p><p>${row.accuracy_meters != null ? `±${Math.round(row.accuracy_meters)} m` : 'Not reported'}</p></div><div><p class="text-gray-500">Distance</p><p>${distanceText}</p></div></div><p class="text-xs text-gray-500 mt-3">Verified at ${new Date(row.verified_at).toLocaleString()}</p><a href="${mapLink}" target="_blank" rel="noopener" class="inline-block mt-3 text-sm font-semibold text-blue-700 hover:underline">Open on map &rarr;</a></div>`;
         } else {
-          resultEl.innerHTML = `<p class="text-amber-600">Location request sent. The staff member must confirm on their device.</p>`;
+          resultEl.innerHTML = `<div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-800 fade-in"><p class="font-semibold">Location request sent</p><p class="text-sm">The staff member has been notified and must share their location from their device.</p></div>`;
         }
       } catch (err) {
         resultEl.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not request location.')}</p>`;
