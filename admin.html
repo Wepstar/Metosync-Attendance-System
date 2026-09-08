@@ -12,7 +12,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="theme.css">
-<script src="shared.js?v=3"></script>
+<script src="shared.js?v=6"></script>
 <style>
   .cycleStatusBtn { cursor: pointer; transition: opacity 160ms ease; }
   .cycleStatusBtn:hover { opacity: 0.75; }
@@ -42,6 +42,7 @@ let attendanceDate = new Date().toISOString().slice(0, 10);
 let attendanceStatus = 'present';
 
 function app() { return document.getElementById('app'); }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
 
 async function init() {
   // If auth takes a while (e.g. a slow token refresh on first load), let the
@@ -135,6 +136,7 @@ function renderDashboard() {
   const tabs = [
     { id: 'staff', label: 'Staff' },
     { id: 'sites', label: 'Sites' },
+    { id: 'location', label: 'Location Checker' },
     plan !== 'payroll' ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' ? { id: 'payroll', label: 'Payroll' } : null,
     plan !== 'attendance' ? { id: 'payroll-history', label: 'Payroll History' } : null,
@@ -173,6 +175,7 @@ async function renderTabContent() {
 
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
+  if (activeTab === 'location') return renderLocationChecker(el);
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
@@ -180,6 +183,39 @@ async function renderTabContent() {
   if (activeTab === 'contact') return renderContact(el);
 
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
+}
+
+async function renderLocationChecker(el) {
+  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><h2 class="text-lg font-bold mb-4">Location Checker</h2><p class="text-sm text-gray-500 mb-4">Verify a staff member's real-time GPS location without requiring them to check out.</p><div id="locationCheckerContent"><p class="text-gray-400 text-center mt-4">Loading staff list…</p></div></div>`;
+  const content = document.getElementById('locationCheckerContent');
+  try {
+    const { data: staff, error } = await sb.from('staff').select('id, full_name, phone, sites(name)').eq('company_id', myProfile.company_id).order('full_name');
+    if (error) throw error;
+    if (!staff || !staff.length) {
+      content.innerHTML = `<p class="text-sm text-gray-500">No staff found. Add staff first.</p>`;
+      return;
+    }
+    content.innerHTML = `<div class="space-y-3"><label class="block text-sm font-semibold text-gray-700">Select staff member</label><select id="locationStaffSelect" class="w-full border rounded-xl px-4 py-2">${staff.map(s => `<option value="${s.id}">${escapeHtml(s.full_name)} — ${escapeHtml(s.phone || 'no phone')}</option>`).join('')}</select><button id="requestLocationBtn" type="button" class="mt-btn-primary w-full">Request Location Capture</button><div id="locationResult" class="mt-3 text-sm"></div></div>`;
+    document.getElementById('requestLocationBtn').onclick = async () => {
+      const staffId = document.getElementById('locationStaffSelect').value;
+      const resultEl = document.getElementById('locationResult');
+      resultEl.innerHTML = `<p class="text-blue-600">Requesting location capture…</p>`;
+      try {
+        const { data, error } = await sb.rpc('admin_request_location_check', { p_staff_id: staffId, p_company_id: myProfile.company_id });
+        if (error) throw error;
+        const row = data && data[0];
+        if (row && row.latitude != null && row.longitude != null) {
+          resultEl.innerHTML = `<div class="rounded-xl bg-green-50 border border-green-200 p-3"><p class="font-semibold text-green-800">Location captured</p><p class="text-gray-600">Lat: ${Number(row.latitude).toFixed(6)}<br>Lng: ${Number(row.longitude).toFixed(6)}</p><p class="text-xs text-gray-500 mt-1">Captured at ${new Date(row.captured_at).toLocaleString()}</p></div>`;
+        } else {
+          resultEl.innerHTML = `<p class="text-amber-600">Location request sent. The staff member must confirm on their device.</p>`;
+        }
+      } catch (err) {
+        resultEl.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not request location.')}</p>`;
+      }
+    };
+  } catch (err) {
+    content.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not load staff.')}</p>`;
+  }
 }
 
 let payrollSubTab = 'general';
