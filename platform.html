@@ -526,6 +526,7 @@ async function renderOwnerDashboard() {
           <button id="watchguardMenuBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #b91c1c;">🛡️ Watchguard</button>
           <button id="notificationSettingsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">🔔 Alerts</button>
           <button id="paymentProvidersBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #10b981;">💳 Payments</button>
+          <button id="ownerReportsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #7c3aed;">📊 Reports</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
       </div>
@@ -562,6 +563,47 @@ async function renderOwnerDashboard() {
     if (!error) generatedCompanyCode = data;
     renderOwnerDashboard();
   };
+  document.getElementById('ownerReportsBtn').onclick = () => renderOwnerReports();
+}
+
+async function renderOwnerReports() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading reports…</p>`;
+  const [{ data: summary, error: sErr }, { data: companies, error: cErr }] = await Promise.all([
+    sb.rpc('platform_report_summary'),
+    sb.rpc('platform_list_companies')
+  ]);
+  if (sErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(sErr.message)}</p>`; return; }
+  if (cErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(cErr.message)}</p>`; return; }
+
+  const row = Array.isArray(summary) ? summary[0] || {} : summary || {};
+  const list = Array.isArray(companies) ? companies : [];
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 📊 Platform Reports</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Owner Dashboard</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Companies</p><p class="text-2xl font-bold">${row.total_companies || 0}</p></div>
+        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Total Staff</p><p class="text-2xl font-bold">${row.total_staff || 0}</p></div>
+        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Attendance Today</p><p class="text-2xl font-bold">${row.total_attendance_today || 0}</p></div>
+        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Checked In Today</p><p class="text-2xl font-bold text-green-700">${row.checked_in_today || 0}</p></div>
+        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Payroll Pending</p><p class="text-2xl font-bold">${Number(row.total_payroll_pending || 0).toFixed(2)}</p></div>
+        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Payments Today</p><p class="text-2xl font-bold text-green-700">${Number(row.total_payments_today || 0).toFixed(2)}</p></div>
+      </div>
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">Companies</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs mt-table">
+            <thead><tr><th>Name</th><th>Country</th><th>Plan</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody>${list.map(c => `<tr class="border-b"><td class="py-2 px-3">${escapeHtml(c.name)}</td><td class="py-2 px-3">${escapeHtml(c.country || '')}</td><td class="py-2 px-3">${escapeHtml(c.plan || '')}</td><td class="py-2 px-3">${escapeHtml(c.status || '')}</td><td class="py-2 px-3">${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('backBtn').onclick = () => renderOwnerDashboard();
 }
 
 function metricValue(row, ...keys) {
