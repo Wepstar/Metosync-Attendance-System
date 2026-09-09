@@ -10,13 +10,15 @@ ALTER TABLE public.admin_users
   ADD COLUMN IF NOT EXISTS last_sign_in_at timestamptz;
 
 -- Backfill existing admin_users from system_role to role for compatibility.
-UPDATE public.admin_users SET role = 'admin' WHERE role IS NULL;
-UPDATE public.admin_users SET role = 'viewer' WHERE role = 'view_only' AND (system_role = 'view_only');
-UPDATE public.admin_users SET role = 'payroll_officer' WHERE role = 'payroll_manager' AND (system_role = 'payroll_manager');
-UPDATE public.admin_users SET role = 'admin' WHERE role = 'hr' AND (system_role = 'hr');
-
--- Ensure owner is at least one per company.
-UPDATE public.admin_users SET role = 'owner' WHERE role IS NULL OR role = 'super_admin';
+UPDATE public.admin_users
+SET role = CASE
+  WHEN system_role = 'view_only' THEN 'viewer'
+  WHEN system_role = 'payroll_manager' THEN 'payroll_officer'
+  WHEN system_role = 'hr' THEN 'admin'
+  WHEN system_role = 'super_admin' THEN 'owner'
+  ELSE 'owner'
+END
+WHERE role IS NULL OR role = '' OR role NOT IN ('owner', 'admin', 'manager', 'payroll_officer', 'viewer');
 
 -- Role constraint.
 ALTER TABLE public.admin_users
