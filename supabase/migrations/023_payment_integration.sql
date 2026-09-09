@@ -139,7 +139,7 @@ AS $$
     s.full_name,
     s.phone,
     pe.net_pay,
-    pp.name,
+    coalesce(pp.period_start::text || ' - ' || pp.period_end::text, '') as period_name,
     coalesce((select sum(pr.amount) from public.payment_requests pr where pr.payroll_entry_id = pe.id and pr.status = 'completed'), 0) as paid_amount,
     pe.net_pay - coalesce((select sum(pr.amount) from public.payment_requests pr where pr.payroll_entry_id = pe.id and pr.status = 'completed'), 0) as pending_amount
   from public.payroll_entries pe
@@ -148,7 +148,7 @@ AS $$
   where s.company_id = p_company_id
     and pe.net_pay > 0
   having (pe.net_pay - coalesce((select sum(pr.amount) from public.payment_requests pr where pr.payroll_entry_id = pe.id and pr.status = 'completed'), 0)) > 0
-  order by pp.end_date desc, s.full_name;
+  order by pp.period_end desc, s.full_name;
 $$;
 
 -- Initiate a payment request (metadata only; the actual provider call is handled by the Edge Function).
