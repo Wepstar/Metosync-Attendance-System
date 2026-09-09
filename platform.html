@@ -497,6 +497,7 @@ async function promptSectionPassword(section, customError = '') {
 function renderSection(section) {
   if (section === 'owner') return renderOwnerDashboard();
   if (section === 'registry') return renderRegistry();
+  if (section === 'accounts') return renderAccountsDashboard();
   app().innerHTML = `
     <div class="mt-card text-center p-6 mt-10">
       <h1 class="text-lg font-bold mb-2 capitalize" style="color: var(--mt-green-dark);">${section}</h1>
@@ -1002,6 +1003,49 @@ async function renderPaymentProviders() {
     feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Paystack provider saved.</span>`;
     if (!error) setTimeout(renderPaymentProviders, 600);
   };
+}
+
+async function renderAccountsDashboard() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading accounts & billing…</p>`;
+  const [{ data: stats, error: statsErr }, { data: payments, error: paymentsErr }] = await Promise.all([
+    sb.rpc('watchguard_payment_stats'),
+    sb.rpc('watchguard_list_payment_requests')
+  ]);
+  if (statsErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(statsErr.message)}</p>`; return; }
+
+  const s = Array.isArray(stats) ? stats[0] || {} : stats || {};
+  const rows = Array.isArray(payments) ? payments : [];
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex flex-wrap justify-between items-center gap-3 mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Accounts & Billing</h1>
+        <div class="flex items-center gap-3">
+          <button id="paymentProvidersBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #10b981;">💳 Providers</button>
+          <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        <div class="rounded-xl border p-3 text-center" style="border-top: 4px solid #2563eb;"><p class="text-2xl font-bold text-blue-700">${s.total_requests || 0}</p><p class="text-xs text-gray-500">Requests</p></div>
+        <div class="rounded-xl border p-3 text-center" style="border-top: 4px solid #16a34a;"><p class="text-2xl font-bold text-green-700">${s.completed_amount || 0}</p><p class="text-xs text-gray-500">Completed</p></div>
+        <div class="rounded-xl border p-3 text-center" style="border-top: 4px solid #f59e0b;"><p class="text-2xl font-bold text-amber-700">${s.pending_amount || 0}</p><p class="text-xs text-gray-500">Pending</p></div>
+        <div class="rounded-xl border p-3 text-center" style="border-top: 4px solid #dc2626;"><p class="text-2xl font-bold text-red-700">${s.failed_amount || 0}</p><p class="text-xs text-gray-500">Failed</p></div>
+      </div>
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">All Payment Requests</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs mt-table">
+            <thead><tr><th class="text-left">Reference</th><th class="text-left">Company</th><th class="text-left">Staff</th><th class="text-left">Amount</th><th class="text-left">Provider</th><th class="text-left">Status</th><th class="text-left">When</th></tr></thead>
+            <tbody>${rows.map(r => `<tr class="border-b"><td class="py-2 px-3">${escapeHtml(r.reference)}</td><td class="py-2 px-3">${escapeHtml(r.company_name || '')}</td><td class="py-2 px-3">${escapeHtml(r.staff_name || '')}</td><td class="py-2 px-3">${r.amount} ${r.currency}</td><td class="py-2 px-3">${r.provider}</td><td class="py-2 px-3">${r.status}</td><td class="py-2 px-3">${new Date(r.created_at).toLocaleString()}</td></tr>`).join('')}</tbody>
+          </table>
+          ${rows.length ? '' : '<p class="text-gray-400 text-sm mt-3">No payment requests yet.</p>'}
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  document.getElementById('paymentProvidersBtn').onclick = () => renderPaymentProviders();
 }
 
 init();
