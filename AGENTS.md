@@ -116,6 +116,17 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Payout fails → provider not configured, invalid MoMo provider code (`MTN`, `VOD`, `TGO`), or wrong secret key.
 - Webhook not updating → Edge Function not deployed, webhook secret mismatch, or payload format.
 
+### Quick Pay (`admin.html` Payroll tab → 💸 Quick Pay)
+**What it does**
+- Allows an admin to pay a staff member directly without a payroll entry.
+- Uses the same `paystack-payout` / `flutterwave-payout` Edge Functions with `payroll_entry_id: null`.
+- Validates MoMo provider codes and provider selection before calling the Edge Function.
+
+**What can go wrong**
+- Edge Function rejects because `payroll_entry_id` was still required → re-deploy `paystack-payout` and `flutterwave-payout`.
+- `payment_request_initiate` rejects null `payroll_entry_id` → verify `025_platform_accounts_payments.sql` is applied.
+- Provider not configured → set up Paystack/Flutterwave in Owner Dashboard or Accounts & Billing.
+
 **Fixes**
 - Run `025` or `026` SQL and refresh schema.
 - Configure provider in Owner Dashboard or Accounts & Billing.

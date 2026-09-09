@@ -40,7 +40,7 @@ serve(async (req: Request) => {
     }
 
     const { payroll_entry_id, staff_id, amount, reason, method = "bank", bank_account_number, bank_code, bank_name } = await req.json();
-    if (!payroll_entry_id || !staff_id || !amount || !bank_account_number || !bank_code || !bank_name) {
+    if (!staff_id || !amount || !bank_account_number || !bank_code || !bank_name) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

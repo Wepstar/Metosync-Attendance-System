@@ -456,17 +456,16 @@ function payrollPreviewHtml(preview, currency) {
 }
 
 function payrollSubTabsHtml() {
-  return `<div class="flex flex-wrap gap-1 mb-4 mt-card p-1">${[['general', 'General Payroll'], ['individual', 'Individual Payroll'], ['taxes', 'Taxes & Incentives']].map(([id, label]) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`).join('')}<span class="border-l border-gray-200 mx-1"></span><a href="payroll.html" class="mt-tab">Gross Earnings Workspace</a><a href="taxes.html" class="mt-tab">Taxes Workspace</a><a href="review.html" class="mt-tab">Final Review</a></div>`;
+  return `<div class="flex flex-wrap gap-1 mb-4 mt-card p-1">${[['general', 'General Payroll'], ['individual', 'Individual Payroll'], ['taxes', 'Taxes & Incentives'], ['quickpay', '<span style="color:#15803d;font-weight:600;">💸 Quick Pay</span>']].map(([id, label]) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`).join('')}<span class="border-l border-gray-200 mx-1"></span><a href="payroll.html" class="mt-tab">Gross Earnings Workspace</a><a href="taxes.html" class="mt-tab">Taxes Workspace</a><a href="review.html" class="mt-tab">Final Review</a></div>`;
 }
 
 async function loadPayrollContext() {
   const { data: periods, error: periodError } = await sb.from('payroll_periods').select('*').eq('company_id', myProfile.company_id).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
   if (periodError) throw periodError;
   const period = periods && periods[0];
-  if (!period) return { period: null, staff: [], entries: [], deductions: [] };
   const [{ data: staff, error: staffError }, { data: entries, error: entryError }, { data: deductions, error: deductionError }] = await Promise.all([
     sb.from('staff').select('id, full_name, phone, currency, weekday_rate, weekend_rate, monthly_salary, sites(name)').eq('company_id', myProfile.company_id).order('full_name'),
-    sb.from('payroll_entries').select('*').eq('payroll_period_id', period.id),
+    period ? sb.from('payroll_entries').select('*').eq('payroll_period_id', period.id) : Promise.resolve({ data: [] }),
     sb.from('deduction_types').select('*').or(`company_id.eq.${myProfile.company_id},company_id.is.null`).order('name')
   ]);
   if (staffError || entryError || deductionError) throw staffError || entryError || deductionError;
@@ -477,7 +476,12 @@ async function renderPayroll(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll…</p>`;
   try { payrollState = { ...payrollState, ...await loadPayrollContext(), previews: new Map() }; } catch (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
   const period = payrollState.period;
-  if (!period) {
+
+  let content = '';
+  let header = '';
+  if (payrollSubTab === 'quickpay') {
+    content = payrollQuickPayHtml();
+  } else if (!period) {
     el.innerHTML = `${payrollSubTabsHtml()}<div class="mt-card p-5 mt-fade-in"><h2 class="font-medium mb-3">Start New Payroll Period</h2><div class="grid grid-cols-2 gap-2 mb-3"><label class="text-sm">Period Start<input id="payrollPeriodStart" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label><label class="text-sm">Period End<input id="payrollPeriodEnd" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label></div><p id="payrollPeriodError" class="text-red-600 text-sm mb-2"></p><button id="startPayrollPeriodBtn" type="button" class="mt-btn-primary">Start New Payroll Period</button></div>`;
     wirePayrollSubTabs(el);
     document.getElementById('startPayrollPeriodBtn').onclick = async () => {
@@ -488,14 +492,17 @@ async function renderPayroll(el) {
       renderPayroll(el);
     };
     return;
+  } else {
+    header = `<div class="flex flex-wrap items-center justify-between gap-2 mb-3"><div class="text-sm text-gray-500">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} (Draft)</div><div class="flex items-center gap-2"><button id="closePayrollPeriodBtn" type="button" class="mt-btn-outline">Close Period</button><span id="closePeriodMsg" class="text-sm"></span></div></div>`;
+    content = payrollSubTab === 'individual' ? payrollIndividualHtml() : payrollSubTab === 'taxes' ? payrollTaxesHtml() : payrollGeneralHtml();
   }
-  const content = payrollSubTab === 'individual' ? payrollIndividualHtml() : payrollSubTab === 'taxes' ? payrollTaxesHtml() : payrollGeneralHtml();
-  el.innerHTML = `${payrollSubTabsHtml()}<div class="flex flex-wrap items-center justify-between gap-2 mb-3"><div class="text-sm text-gray-500">Payroll Period: ${formatPayrollDate(period.period_start)} – ${formatPayrollDate(period.period_end)} (Draft)</div><div class="flex items-center gap-2"><button id="closePayrollPeriodBtn" type="button" class="mt-btn-outline">Close Period</button><span id="closePeriodMsg" class="text-sm"></span></div></div>${content}`;
+  el.innerHTML = `${payrollSubTabsHtml()}${header}${content}`;
   wirePayrollSubTabs(el);
   if (payrollSubTab === 'general') await wireGeneralPayroll(el);
   if (payrollSubTab === 'individual') await wireIndividualPayroll(el);
   if (payrollSubTab === 'taxes') wireTaxesPayroll(el);
-  document.getElementById('closePayrollPeriodBtn').onclick = async () => {
+  if (payrollSubTab === 'quickpay') wireQuickPay(el);
+  if (period) document.getElementById('closePayrollPeriodBtn').onclick = async () => {
     if (!confirm('Close this payroll period? Once closed it can no longer be edited, and a new period will need to be started.')) return;
     const { error } = await sb.rpc('close_payroll_period', { p_payroll_period_id: period.id });
     const msg = document.getElementById('closePeriodMsg');
@@ -524,6 +531,65 @@ async function previewPayrollRow(row) {
   row.querySelector('.payrollDeductions').textContent = payrollMoney(payrollValue(data, 'total_deductions', 'deductions'), row.dataset.currency);
   row.querySelector('.payrollNet').textContent = payrollMoney(payrollValue(data, 'net_pay', 'net'), row.dataset.currency);
   if (Number(payrollValue(data, 'gross_pay', 'gross') || 0) === 0) message.textContent = ' Warning: rates may be missing.';
+}
+
+function payrollQuickPayHtml() {
+  const staffOptions = payrollState.staff.map(s => `<option value="${s.id}" data-currency="${s.currency || ''}">${escapeHtml(s.full_name)} — ${s.phone || 'no phone'}</option>`).join('');
+  return `
+    <div class="mt-card p-5 mt-fade-in">
+      <h2 class="font-medium mb-3">Quick Payment</h2>
+      <p class="text-sm text-gray-500 mb-3">Pay a staff member directly without creating a payroll entry.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <select id="quickPayStaff" class="border rounded-lg px-3 py-2 text-sm">${staffOptions || '<option value="">No staff yet</option>'}</select>
+        <input id="quickPayAmount" type="number" min="0" step="0.01" class="border rounded-lg px-3 py-2 text-sm" placeholder="Amount">
+        <select id="quickPayProvider" class="border rounded-lg px-3 py-2 text-sm">
+          <option value="paystack">Paystack</option>
+          <option value="flutterwave">Flutterwave</option>
+        </select>
+        <select id="quickPayMethod" class="border rounded-lg px-3 py-2 text-sm">
+          <option value="bank">Bank Transfer</option>
+          <option value="momo">Mobile Money (MoMo)</option>
+        </select>
+        <input id="quickPayAccount" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Account number / Phone number">
+        <input id="quickPayCode" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Bank code / MoMo provider (MTN, VOD, TGO)">
+        <input id="quickPayName" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Bank name / MoMo wallet name">
+      </div>
+      <button id="quickPayBtn" type="button" class="rounded-lg px-4 py-2 text-sm font-semibold text-white" style="background: #16a34a;">💸 Pay Now</button>
+      <p id="quickPayFeedback" class="text-sm mt-2"></p>
+    </div>`;
+}
+
+function wireQuickPay(el) {
+  const btn = document.getElementById('quickPayBtn');
+  if (!btn) return;
+  btn.onclick = async () => {
+    const feedback = document.getElementById('quickPayFeedback');
+    const staffId = document.getElementById('quickPayStaff').value;
+    const amount = parseFloat(document.getElementById('quickPayAmount').value);
+    const provider = document.getElementById('quickPayProvider').value;
+    const method = document.getElementById('quickPayMethod').value;
+    const account = document.getElementById('quickPayAccount').value.trim();
+    const code = document.getElementById('quickPayCode').value.trim();
+    const name = document.getElementById('quickPayName').value.trim();
+
+    if (!staffId || !amount || !account || !code || !name) { feedback.innerHTML = '<span class="text-red-600">All fields are required.</span>'; return; }
+    if (method === 'momo' && !['MTN','VOD','TGO'].includes(code.toUpperCase())) { feedback.innerHTML = '<span class="text-red-600">MoMo provider must be MTN, VOD, or TGO.</span>'; return; }
+    if (!['paystack','flutterwave'].includes(provider)) { feedback.innerHTML = '<span class="text-red-600">Invalid provider.</span>'; return; }
+
+    feedback.innerHTML = '<span class="text-blue-600">Initiating payment…</span>';
+    try {
+      const { data, error } = await sb.functions.invoke(`${provider}-payout`, {
+        method: 'POST',
+        body: { payroll_entry_id: null, staff_id: staffId, amount, method, reason: 'Quick payment', bank_account_number: account, bank_code: code, bank_name: name }
+      });
+      if (error) throw new Error(error.message || 'Payment request failed');
+      feedback.innerHTML = data.success
+        ? `<span class="text-green-700">Payment initiated: ${escapeHtml(data.reference)}</span>`
+        : `<span class="text-red-600">${escapeHtml(data.error || 'Failed')}</span>`;
+    } catch (err) {
+      feedback.innerHTML = `<span class="text-red-600">${escapeHtml(err.message || 'Payment failed')}</span>`;
+    }
+  };
 }
 
 async function wireGeneralPayroll(el) {
