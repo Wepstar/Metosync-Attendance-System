@@ -204,7 +204,6 @@ function renderDashboard() {
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll-history', label: 'Payroll History' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
-    can('use_watchguard') ? { id: 'watchguard', label: 'Watch Guard' } : null,
     can('manage_settings') || can('manage_admins') ? { id: 'settings', label: 'Settings' } : null,
     { id: 'admins', label: 'Admins' },
     { id: 'contact', label: 'Contact & Support' },
@@ -246,7 +245,6 @@ async function renderTabContent() {
   if (activeTab === 'payroll') return renderPayroll(el);
   if (activeTab === 'payments') return renderPayments(el);
   if (activeTab === 'admins') return renderAdmins(el);
-  if (activeTab === 'watchguard') return renderWatchGuard(el);
   if (activeTab === 'settings') return renderSettings(el);
   if (activeTab === 'contact') return renderContact(el);
 
@@ -1856,76 +1854,6 @@ function renderContact(el) {
       <p class="text-sm"><a href="mailto:metosync.reports@gmail.com" class="text-blue-600">metosync.reports@gmail.com</a></p>
       <p class="text-sm"><a href="tel:+233503938430" class="text-blue-600">+233 050 393 8430</a></p>
     </div>`;
-}
-
-async function renderWatchGuard(el) {
-  el.innerHTML = `
-    <div class="mt-card p-6 mt-fade-in">
-      <h2 class="text-lg font-bold mb-2">Watch Guard</h2>
-      <p class="text-sm text-gray-500 mb-4">System analysis, alerts, and AI assistant for the owner dashboard.</p>
-      <div id="watchGuardReport" class="mb-4"><p class="text-gray-400 text-center">Loading report…</p></div>
-      <div class="border rounded-xl p-3 bg-gray-50">
-        <div id="watchGuardChat" class="h-64 overflow-y-auto space-y-2 mb-3 text-sm"></div>
-        <div class="flex gap-2">
-          <input id="watchGuardInput" type="text" class="flex-1 border rounded-lg px-3 py-2" placeholder="Ask Watch Guard, e.g. 'show report'">
-          <button id="watchGuardSend" type="button" class="mt-btn-primary">Send</button>
-        </div>
-      </div>
-    </div>`;
-
-  const reportEl = document.getElementById('watchGuardReport');
-  const chatEl = document.getElementById('watchGuardChat');
-  const input = document.getElementById('watchGuardInput');
-  const sendBtn = document.getElementById('watchGuardSend');
-
-  function addMessage(role, text) {
-    chatEl.innerHTML += `<div class="${role === 'owner' ? 'text-right' : ''}"><span class="inline-block px-3 py-2 rounded-lg ${role === 'owner' ? 'bg-blue-100 text-blue-900' : 'bg-white border text-gray-800'}">${escapeHtml(text)}</span></div>`;
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-
-  addMessage('guard', 'Hello. I am Watch Guard. Ask me for a "report", "attendance", "suspicious", "devices", "offline", or "login failures".');
-
-  async function loadReport() {
-    try {
-      const { data, error } = await sb.rpc('watch_guard_report', { p_company_id: myProfile.company_id });
-      if (error) throw error;
-      const r = data && (Array.isArray(data) ? data[0] : data);
-      const summary = r?.summary || {};
-      const events = (r?.recent_events || []).slice(0, 5);
-      reportEl.innerHTML = `
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Staff</p><p class="text-2xl font-bold">${summary.total_staff || 0}</p></div>
-          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Checked in today</p><p class="text-2xl font-bold text-green-700">${summary.checked_in_today || 0}</p></div>
-          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Checked out today</p><p class="text-2xl font-bold text-blue-700">${summary.checked_out_today || 0}</p></div>
-          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Absent</p><p class="text-2xl font-bold text-gray-600">${summary.absent_today || 0}</p></div>
-          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Pending devices</p><p class="text-2xl font-bold ${(summary.pending_devices || 0) ? 'text-amber-700' : ''}">${summary.pending_devices || 0}</p></div>
-          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Suspicious</p><p class="text-2xl font-bold ${(summary.suspicious_attendance || 0) ? 'text-red-700' : ''}">${summary.suspicious_attendance || 0}</p></div>
-        </div>
-        ${events.length ? `<div class="space-y-2"><h3 class="font-semibold text-sm">Recent events</h3>${events.map(e => `<div class="text-xs rounded-lg border p-2 ${e.severity === 'critical' ? 'bg-red-50 border-red-200' : e.severity === 'warning' ? 'bg-amber-50 border-amber-200' : 'bg-white'}"><strong class="capitalize">${escapeHtml(e.severity)}</strong> — ${escapeHtml(e.message)} <span class="text-gray-400">${new Date(e.created_at).toLocaleString()}</span></div>`).join('')}</div>` : '<p class="text-sm text-gray-500">No recent watch-guard events.</p>'}`;
-    } catch (err) {
-      reportEl.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(err.message || 'Could not load Watch Guard report.')}</p>`;
-    }
-  }
-
-  async function sendChat() {
-    const text = input.value.trim();
-    if (!text) return;
-    addMessage('owner', text);
-    input.value = '';
-    try {
-      const { data, error } = await sb.rpc('watch_guard_chat', { p_company_id: myProfile.company_id, p_message: text });
-      if (error) throw error;
-      const res = data && (Array.isArray(data) ? data[0] : data);
-      addMessage('guard', res?.reply || 'I am thinking…');
-    } catch (err) {
-      addMessage('guard', 'Sorry, I could not process that. ' + (err.message || ''));
-    }
-  }
-
-  sendBtn.onclick = sendChat;
-  input.onkeydown = (e) => { if (e.key === 'Enter') sendChat(); };
-
-  await loadReport();
 }
 
 init();

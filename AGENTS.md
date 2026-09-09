@@ -49,10 +49,11 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `payroll` → `renderPayroll`
 - `payroll-history` → payroll history
 - `payments` → `renderPayments`
-- `watchguard` → `renderWatchGuard`
 - `settings` → settings
 - `admins` → `renderAdmins`
 - `contact` → `renderContact`
+
+> **Note**: Watch Guard was removed from the admin menu and now lives in the Owner Dashboard (`platform.html`) with whole-system access.
 
 ### Attendance Tab (`renderAttendance`)
 **What it does**

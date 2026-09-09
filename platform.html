@@ -741,15 +741,17 @@ async function renderRegistry() {
 
 async function renderWatchguardDashboard() {
   app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading Watchguard…</p>`;
-  const [{ data: findings, error: fErr }, { data: events, error: eErr }] = await Promise.all([
+  const [{ data: findings, error: fErr }, { data: events, error: eErr }, { data: report, error: rErr }] = await Promise.all([
     sb.rpc('watchguard_open_findings'),
-    sb.rpc('watchguard_event_log', { p_limit: 50 })
+    sb.rpc('watchguard_event_log', { p_limit: 50 }),
+    sb.rpc('platform_watch_guard_report')
   ]);
   if (fErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(fErr.message)}</p>`; return; }
   if (eErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(eErr.message)}</p>`; return; }
 
   const rows = Array.isArray(findings) ? findings : [];
   const logRows = Array.isArray(events) ? events : [];
+  const systemReport = report || {};
 
   const severityOrder = { critical: 1, warning: 2, info: 3 };
   rows.sort((a, b) => (severityOrder[a.severity] || 4) - (severityOrder[b.severity] || 4) || new Date(b.created_at) - new Date(a.created_at));
@@ -758,9 +760,21 @@ async function renderWatchguardDashboard() {
   app().innerHTML = `
     <div class="registry-page mt-fade-in">
       <div class="flex justify-between items-center mt-6 mb-4">
-        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 🛡️ Watchguard Findings</h1>
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 🛡️ Watchguard (Whole System)</h1>
         <button id="backBtn" class="text-sm text-gray-500">← Back to Owner Dashboard</button>
       </div>
+
+      <div class="mt-card p-5 mb-5">
+        <h2 class="font-medium text-sm mb-3">System Health Snapshot</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Companies</p><p class="text-2xl font-bold">${systemReport.total_companies || 0}</p></div>
+          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Staff</p><p class="text-2xl font-bold">${systemReport.total_staff || 0}</p></div>
+          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Checked in today</p><p class="text-2xl font-bold text-green-700">${systemReport.checked_in_today || 0}</p></div>
+          <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Open findings</p><p class="text-2xl font-bold ${rows.length ? 'text-red-700' : ''}">${rows.length}</p></div>
+        </div>
+        <p class="text-sm text-gray-500">${systemReport.summary ? escapeHtml(systemReport.summary) : 'Whole-system view across all organizations.'}</p>
+      </div>
+
       <div class="mt-card p-5 mb-5">
         <h2 class="font-medium text-sm mb-3">Open Findings (${rows.length})</h2>
         <div id="findingsList" class="space-y-3">
@@ -783,7 +797,8 @@ async function renderWatchguardDashboard() {
           `).join('') : '<p class="text-gray-400 text-sm">No open findings. The system is healthy.</p>'}
         </div>
       </div>
-      <div class="mt-card p-5">
+
+      <div class="mt-card p-5 mb-5">
         <h2 class="font-medium text-sm mb-3">Recent Immutable Event Log</h2>
         <div class="overflow-x-auto">
           <table class="w-full text-xs mt-table">
@@ -792,9 +807,63 @@ async function renderWatchguardDashboard() {
           </table>
         </div>
       </div>
+
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">Watchguard Assistant (Training Mode)</h2>
+        <p class="text-xs text-gray-500 mb-2">Ask: "report", "events", "findings", "staff", "companies", or "help".</p>
+        <div id="watchguardChat" class="h-64 overflow-y-auto space-y-2 mb-3 text-sm"></div>
+        <div class="flex gap-2">
+          <input id="watchguardInput" type="text" class="flex-1 border rounded-lg px-3 py-2" placeholder="Ask Watch Guard about the whole system…">
+          <button id="watchguardSend" type="button" class="mt-btn-primary">Send</button>
+        </div>
+      </div>
     </div>`;
 
   document.getElementById('backBtn').onclick = () => renderOwnerDashboard();
+
+  const chatEl = document.getElementById('watchguardChat');
+  const input = document.getElementById('watchguardInput');
+  const sendBtn = document.getElementById('watchguardSend');
+
+  function addMessage(role, text) {
+    chatEl.innerHTML += `<div class="${role === 'owner' ? 'text-right' : ''}"><span class="inline-block px-3 py-2 rounded-lg ${role === 'owner' ? 'bg-blue-100 text-blue-900' : 'bg-white border text-gray-800'}">${escapeHtml(text)}</span></div>`;
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  addMessage('guard', 'Hello. I am Watch Guard. I can read the whole system across all organizations. Ask me for "report", "events", "findings", "staff", "companies", or "help".');
+
+  async function askWatchguard(text) {
+    const msg = text.toLowerCase().trim();
+    addMessage('owner', text);
+    input.value = '';
+    let reply = '';
+    try {
+      if (msg.includes('report') || msg.includes('status') || msg.includes('health')) {
+        const { data } = await sb.rpc('platform_watch_guard_report');
+        const r = data || {};
+        reply = `System report: ${r.total_companies || 0} companies, ${r.total_staff || 0} staff, ${r.checked_in_today || 0} checked in today, ${r.suspicious_attendance || 0} suspicious, ${r.pending_devices || 0} pending devices.`;
+      } else if (msg.includes('event')) {
+        reply = `Showing ${logRows.length} recent events from the immutable log.`;
+      } else if (msg.includes('finding')) {
+        const critical = rows.filter(r => r.severity === 'critical').length;
+        reply = `There are ${rows.length} open findings (${critical} critical).`;
+      } else if (msg.includes('staff')) {
+        reply = `Total staff across all companies: ${systemReport.total_staff || 0}.`;
+      } else if (msg.includes('company')) {
+        reply = `Total companies on the platform: ${systemReport.total_companies || 0}.`;
+      } else if (msg.includes('help')) {
+        reply = 'Try: report, events, findings, staff, companies. In training mode I answer from system-wide RPCs.';
+      } else {
+        reply = 'I am in training mode. I can answer from the whole-system report, events, findings, staff, and company counts.';
+      }
+    } catch (err) {
+      reply = 'Sorry, I could not fetch that. ' + (err.message || '');
+    }
+    addMessage('guard', reply);
+  }
+
+  sendBtn.onclick = () => askWatchguard(input.value);
+  input.onkeydown = (e) => { if (e.key === 'Enter') askWatchguard(input.value); };
 
   const authUser = state.session ? state.session.user : null;
   rows.forEach((r, i) => {
