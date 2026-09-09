@@ -11,17 +11,20 @@ VALUES ('staff-photos', 'staff-photos', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies for authenticated users.
-CREATE POLICY IF NOT EXISTS "Allow authenticated select on staff-photos"
+DROP POLICY IF EXISTS "Allow authenticated select on staff-photos" ON storage.objects;
+CREATE POLICY "Allow authenticated select on staff-photos"
 ON storage.objects FOR SELECT
 TO authenticated
 USING (bucket_id = 'staff-photos');
 
-CREATE POLICY IF NOT EXISTS "Allow authenticated insert on staff-photos"
+DROP POLICY IF EXISTS "Allow authenticated insert on staff-photos" ON storage.objects;
+CREATE POLICY "Allow authenticated insert on staff-photos"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'staff-photos');
 
-CREATE POLICY IF NOT EXISTS "Allow authenticated delete on staff-photos"
+DROP POLICY IF EXISTS "Allow authenticated delete on staff-photos" ON storage.objects;
+CREATE POLICY "Allow authenticated delete on staff-photos"
 ON storage.objects FOR DELETE
 TO authenticated
 USING (bucket_id = 'staff-photos');
