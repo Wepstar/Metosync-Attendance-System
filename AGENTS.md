@@ -56,6 +56,20 @@ This document is written for Watchguard (and future AI agents) so they can under
 > **Note**: Watch Guard was removed from the admin menu and now lives in the Owner Dashboard (`platform.html`) with whole-system access.
 > **Note**: Admin management (`Admins` tab) was removed from `admin.html` and now lives in the Registry side (`platform.html`) for support-team access.
 
+### Staff Tab (`renderStaff`)
+**What it does**
+- Add Staff form accepts full name, mobile, photo, department/role/staff code, pay rates, PIN, site.
+- Photo is uploaded to the `staff-photos` Supabase Storage bucket and stored in `staff.photo_url`.
+- Staff Catalog shows staff rows with thumbnail, name, phone, site, pay, status, device.
+- Click any row or the **View** button to open a profile popup with all details.
+- The popup has an **Edit** button top-right that toggles edit mode.
+- Save calls `update_staff_profile` RPC.
+
+**What can go wrong**
+- Photo upload fails → `staff-photos` bucket missing or storage policies not applied. Run `030_staff_profiles.sql`.
+- `create_staff` missing → run `030_staff_profiles.sql`.
+- `update_staff_profile` does not save → verify `030_staff_profiles.sql` is applied and reload PostgREST schema.
+
 ### Attendance Tab (`renderAttendance`)
 **What it does**
 - Shows trend chart and daily attendance table for `attendanceDate`.

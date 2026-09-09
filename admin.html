@@ -879,15 +879,16 @@ async function renderStaff(el) {
       : s.device_fingerprint
         ? `<span class="text-xs text-green-600" title="${escapeHtml(s.device_fingerprint)}">Trusted</span>`
         : `<span class="text-xs text-gray-400">Not set</span>`;
+    const photoThumb = s.photo_url ? `<img src="${escapeHtml(s.photo_url)}" class="w-8 h-8 rounded-full object-cover inline-block mr-2 border" alt="">` : `<span class="w-8 h-8 rounded-full inline-block mr-2 bg-gray-200 flex items-center justify-center text-xs">👤</span>`;
     return `
-    <tr>
-      <td><input type="checkbox" class="staffSelectCheck" data-id="${s.id}"></td>
-      <td>${s.full_name} ${s.staff_type === 'casual' ? '<span class="text-xs text-gray-400">(Casual)</span>' : ''}</td>
+    <tr class="cursor-pointer hover:bg-gray-50" data-staff-id="${s.id}">
+      <td><input type="checkbox" class="staffSelectCheck" data-id="${s.id}" onclick="event.stopPropagation()"></td>
+      <td>${photoThumb}${s.full_name} ${s.staff_type === 'casual' ? '<span class="text-xs text-gray-400">(Casual)</span>' : ''}</td>
       <td>${s.phone}</td>
       <td>${s.sites ? s.sites.name : ''}</td>
       <td>${s.pay_type === 'monthly' ? `${s.currency} ${Number(s.monthly_salary || 0).toFixed(2)}/mo` : `${s.currency} ${Number(s.weekday_rate || 0).toFixed(2)} wkday / ${Number(s.weekend_rate || 0).toFixed(2)} wkend`}</td>
       <td>${statusBadge(s.status)}</td>
-      <td>${deviceCell}</td>
+      <td>${deviceCell}<button class="viewProfileBtn text-xs text-blue-600 underline ml-2" data-id="${s.id}">View</button></td>
     </tr>`;
   }).join('');
 
@@ -904,6 +905,14 @@ async function renderStaff(el) {
       <div class="grid grid-cols-2 gap-2">
         <input id="f_name" autocomplete="off" placeholder="Full Name *" class="border rounded-lg px-3 py-2 text-sm">
         <input id="f_mobile" autocomplete="off" placeholder="Mobile *" class="border rounded-lg px-3 py-2 text-sm">
+
+        <div class="col-span-2 flex items-center gap-3 mb-2">
+          <img id="f_photoPreview" src="" alt="" class="hidden w-16 h-16 rounded-full object-cover border">
+          <label class="text-sm text-gray-500 cursor-pointer">
+            <input id="f_photo" type="file" accept="image/*" class="hidden">
+            <span class="border rounded-lg px-3 py-2 inline-block">📷 Upload Photo</span>
+          </label>
+        </div>
 
         <input id="f_department" autocomplete="off" placeholder="Department" class="border rounded-lg px-3 py-2 text-sm ${isCasual ? 'hidden' : ''}">
         <input id="f_role" autocomplete="off" placeholder="Role" class="border rounded-lg px-3 py-2 text-sm ${isCasual ? 'hidden' : ''}">
@@ -1010,7 +1019,8 @@ async function renderStaff(el) {
             if (hashError) throw hashError;
             pinHash = hashed;
           }
-          const { error: addError } = await sb.rpc('add_staff', { p_staff: {
+          const { error: addError } = await sb.rpc('create_staff', { p_staff: {
+            company_id: myProfile.company_id,
             site_id: item.matchedSite.id,
             full_name: name,
             phone,
@@ -1104,6 +1114,19 @@ async function renderStaff(el) {
   }
   wireCustomFieldRows();
 
+  document.getElementById('f_photo').onchange = (e) => {
+    const file = e.target.files[0];
+    const preview = document.getElementById('f_photoPreview');
+    if (file) {
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.classList.remove('hidden');
+    } else {
+      preview.src = '';
+      preview.classList.add('hidden');
+    }
+  };
+
   document.getElementById('addStaffBtn').onclick = async () => {
     errorMsg = '';
     const name = document.getElementById('f_name').value.trim();
@@ -1115,7 +1138,17 @@ async function renderStaff(el) {
       showFormError('Fill in Full Name, Mobile, and choose a site.'); return;
     }
 
-    let insertData = { site_id: siteId, full_name: name, phone: mobile, staff_type: staffType };
+    let photoUrl = null;
+    const photoFile = document.getElementById('f_photo').files[0];
+    if (photoFile) {
+      const path = `${myProfile.company_id}/${Date.now()}_${photoFile.name.replace(/[^a-z0-9_.-]/gi, '_')}`;
+      const { error: upErr } = await sb.storage.from('staff-photos').upload(path, photoFile);
+      if (upErr) { showFormError('Photo upload failed: ' + upErr.message); return; }
+      const { data: urlData } = sb.storage.from('staff-photos').getPublicUrl(path);
+      photoUrl = urlData?.publicUrl || null;
+    }
+
+    let insertData = { company_id: myProfile.company_id, site_id: siteId, full_name: name, phone: mobile, staff_type: staffType, photo_url: photoUrl };
 
     if (staffType === 'casual') {
       const salary = document.getElementById('f_salary').value;
@@ -1155,12 +1188,14 @@ async function renderStaff(el) {
         weekday_rate: payType === 'daily' ? (weekday || 0) : null,
         weekend_rate: payType === 'daily' ? (weekend || 0) : null,
         monthly_salary: payType === 'fixed' ? (salary || 0) : null,
-        currency: payType === 'fixed' ? currencySalary : currencyRate
+        currency: payType === 'fixed' ? currencySalary : currencyRate,
+        profile: { department, role, staff_code }
       };
     }
 
-    const { data: newStaffId, error } = await sb.rpc('add_staff', { p_staff: insertData });
+    const { data: newStaff, error } = await sb.rpc('create_staff', { p_staff: insertData });
     if (error) { showFormError(error.message); return; }
+    const newStaffId = newStaff?.id;
 
     syncCustomFieldsFromDom();
     const validFields = customFields.filter(f => f.label.trim());
@@ -1208,9 +1243,145 @@ async function renderStaff(el) {
     };
   });
 
+  document.querySelectorAll('.viewProfileBtn').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); openStaffProfile(btn.dataset.id); };
+  });
+  document.querySelectorAll('tr[data-staff-id]').forEach(row => {
+    row.onclick = (e) => { if (e.target.closest('.staffSelectCheck') || e.target.closest('.viewProfileBtn') || e.target.closest('.approveDeviceBtn')) return; openStaffProfile(row.dataset.staffId); };
+  });
+
   app().querySelectorAll('#f_name, #f_mobile, #f_department, #f_role, #f_staffcode, #f_pin, #f_weekday, #f_weekend, #f_salary').forEach(inp => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addStaffBtn').click(); });
   });
+}
+
+async function openStaffProfile(staffId) {
+  const { data: staff, error } = await sb.from('staff').select('*, sites(name, country)').eq('id', staffId).single();
+  if (error || !staff) { alert('Could not load staff profile'); return; }
+  renderStaffProfileModal(staff, false);
+}
+
+function renderStaffProfileModal(staff, editMode) {
+  const existing = document.getElementById('staffProfileModal');
+  if (existing) existing.remove();
+  const profile = staff.profile || {};
+  const siteOptions = sites.map(s => `<option value="${s.id}" ${s.id === staff.site_id ? 'selected' : ''}>${escapeHtml(s.name)} (${s.country})</option>`).join('');
+  const photoUrl = staff.photo_url || '';
+  const photoHtml = photoUrl
+    ? `<img id="profilePhoto" src="${escapeHtml(photoUrl)}" class="w-24 h-24 rounded-full object-cover border mb-2" alt="">`
+    : `<div class="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-2xl mb-2">👤</div>`;
+
+  const viewFields = [
+    { label: 'Full Name', value: staff.full_name },
+    { label: 'Phone', value: staff.phone },
+    { label: 'Email', value: profile.email || '' },
+    { label: 'Department', value: staff.department || profile.department || '' },
+    { label: 'Role', value: staff.role || profile.role || '' },
+    { label: 'Staff Code', value: staff.staff_code || profile.staff_code || '' },
+    { label: 'Site', value: staff.sites ? `${staff.sites.name} (${staff.sites.country})` : '' },
+    { label: 'Status', value: staff.status },
+    { label: 'Staff Type', value: staff.staff_type },
+    { label: 'Pay Type', value: staff.pay_type },
+    { label: 'Currency', value: staff.currency },
+    { label: 'Weekday Rate', value: staff.weekday_rate },
+    { label: 'Weekend Rate', value: staff.weekend_rate },
+    { label: 'Monthly Salary', value: staff.monthly_salary },
+    { label: 'Address', value: profile.address || '' },
+    { label: 'Emergency Contact', value: profile.emergency_contact || '' },
+    { label: 'Hire Date', value: profile.hire_date || '' },
+    { label: 'Date of Birth', value: profile.date_of_birth || '' },
+    { label: 'Gender', value: profile.gender || '' },
+    { label: 'Notes', value: profile.notes || '' }
+  ];
+
+  const editForm = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+      <label class="col-span-2 flex flex-col items-center cursor-pointer">
+        ${photoHtml}
+        <input type="file" id="profilePhotoInput" accept="image/*" class="hidden">
+        <span class="text-xs text-blue-600">Change photo</span>
+      </label>
+      <input id="p_full_name" class="border rounded-lg px-3 py-2" placeholder="Full Name" value="${escapeHtml(staff.full_name)}">
+      <input id="p_phone" class="border rounded-lg px-3 py-2" placeholder="Phone" value="${escapeHtml(staff.phone)}">
+      <input id="p_email" class="border rounded-lg px-3 py-2" placeholder="Email" value="${escapeHtml(profile.email || '')}">
+      <input id="p_department" class="border rounded-lg px-3 py-2" placeholder="Department" value="${escapeHtml(staff.department || profile.department || '')}">
+      <input id="p_role" class="border rounded-lg px-3 py-2" placeholder="Role" value="${escapeHtml(staff.role || profile.role || '')}">
+      <input id="p_staff_code" class="border rounded-lg px-3 py-2" placeholder="Staff Code" value="${escapeHtml(staff.staff_code || profile.staff_code || '')}">
+      <select id="p_site_id" class="border rounded-lg px-3 py-2">${siteOptions}</select>
+      <select id="p_status" class="border rounded-lg px-3 py-2"><option value="active" ${staff.status === 'active' ? 'selected' : ''}>Active</option><option value="inactive" ${staff.status === 'inactive' ? 'selected' : ''}>Inactive</option><option value="on_leave" ${staff.status === 'on_leave' ? 'selected' : ''}>On Leave</option></select>
+      <input id="p_address" class="border rounded-lg px-3 py-2" placeholder="Address" value="${escapeHtml(profile.address || '')}">
+      <input id="p_emergency" class="border rounded-lg px-3 py-2" placeholder="Emergency Contact" value="${escapeHtml(profile.emergency_contact || '')}">
+      <input id="p_hire_date" type="date" class="border rounded-lg px-3 py-2" placeholder="Hire Date" value="${escapeHtml(profile.hire_date || '')}">
+      <input id="p_dob" type="date" class="border rounded-lg px-3 py-2" placeholder="Date of Birth" value="${escapeHtml(profile.date_of_birth || '')}">
+      <select id="p_gender" class="border rounded-lg px-3 py-2"><option value="" ${!profile.gender ? 'selected' : ''}>—</option><option value="Male" ${profile.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${profile.gender === 'Female' ? 'selected' : ''}>Female</option><option value="Other" ${profile.gender === 'Other' ? 'selected' : ''}>Other</option></select>
+      <textarea id="p_notes" class="border rounded-lg px-3 py-2 col-span-2" rows="3" placeholder="Notes">${escapeHtml(profile.notes || '')}</textarea>
+    </div>
+  `;
+
+  const viewForm = viewFields.map(f => `<div class="py-2 border-b last:border-0"><p class="text-xs text-gray-500 uppercase">${f.label}</p><p class="text-sm font-medium">${escapeHtml(String(f.value ?? ''))}</p></div>`).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'staffProfileModal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+  modal.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
+      <button id="closeProfileModal" class="absolute top-4 right-4 text-gray-500 text-lg">&times;</button>
+      ${!editMode ? `<button id="editProfileBtn" class="absolute top-4 right-14 text-sm text-blue-600 font-semibold">Edit</button>` : ''}
+      <h2 class="text-lg font-bold mb-4 pr-16">Staff Profile</h2>
+      ${editMode ? editForm : `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">${photoHtml}<div class="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">${viewForm}</div></div>`}
+      ${editMode ? `<div class="flex gap-2 mt-4"><button id="saveProfileBtn" type="button" class="mt-btn-primary">Save</button><button id="cancelProfileEdit" type="button" class="mt-btn-outline">Cancel</button></div>` : ''}
+      <p id="profileFeedback" class="text-sm mt-2"></p>
+    </div>`;
+  document.body.appendChild(modal);
+
+  document.getElementById('closeProfileModal').onclick = () => modal.remove();
+  if (!editMode) {
+    document.getElementById('editProfileBtn').onclick = () => renderStaffProfileModal(staff, true);
+  } else {
+    let newPhotoUrl = staff.photo_url;
+    const photoInput = document.getElementById('profilePhotoInput');
+    const preview = document.getElementById('profilePhoto');
+    photoInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const path = `${myProfile.company_id}/${Date.now()}_${file.name.replace(/[^a-z0-9_.-]/gi, '_')}`;
+      const { error: upErr } = await sb.storage.from('staff-photos').upload(path, file);
+      if (upErr) { document.getElementById('profileFeedback').innerHTML = `<span class="text-red-600">Photo upload failed: ${escapeHtml(upErr.message)}</span>`; return; }
+      const { data: urlData } = sb.storage.from('staff-photos').getPublicUrl(path);
+      newPhotoUrl = urlData?.publicUrl || null;
+      if (preview && newPhotoUrl) { preview.src = newPhotoUrl; }
+    };
+    document.getElementById('cancelProfileEdit').onclick = () => renderStaffProfileModal(staff, false);
+    document.getElementById('saveProfileBtn').onclick = async () => {
+      const feedback = document.getElementById('profileFeedback');
+      feedback.innerHTML = '<span class="text-blue-600">Saving…</span>';
+      const updates = {
+        p_staff_id: staff.id,
+        p_full_name: document.getElementById('p_full_name').value.trim(),
+        p_phone: document.getElementById('p_phone').value.trim(),
+        p_photo_url: newPhotoUrl,
+        p_site_id: document.getElementById('p_site_id').value || staff.site_id,
+        p_profile: {
+          email: document.getElementById('p_email').value.trim(),
+          department: document.getElementById('p_department').value.trim(),
+          role: document.getElementById('p_role').value.trim(),
+          staff_code: document.getElementById('p_staff_code').value.trim(),
+          address: document.getElementById('p_address').value.trim(),
+          emergency_contact: document.getElementById('p_emergency').value.trim(),
+          hire_date: document.getElementById('p_hire_date').value,
+          date_of_birth: document.getElementById('p_dob').value,
+          gender: document.getElementById('p_gender').value,
+          notes: document.getElementById('p_notes').value.trim(),
+          status: document.getElementById('p_status').value
+        }
+      };
+      const { data, error } = await sb.rpc('update_staff_profile', updates);
+      if (error) { feedback.innerHTML = `<span class="text-red-600">${escapeHtml(error.message)}</span>`; return; }
+      feedback.innerHTML = '<span class="text-green-700">Saved.</span>';
+      renderStaffProfileModal(data, false);
+      renderStaff(document.getElementById('tabContent'));
+    };
+  }
 }
 
 // ===== ATTENDANCE =====
