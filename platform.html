@@ -938,7 +938,7 @@ async function renderNotificationSettings() {
   });
 }
 
-async function renderPaymentProviders() {
+async function renderPaymentProviders(backFn = renderOwnerDashboard, title = 'Owner Dashboard') {
   app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading payment providers…</p>`;
   const { data: providers, error } = await sb.rpc('watchguard_list_payment_providers');
   if (error) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(error.message)}</p>`; return; }
@@ -948,8 +948,8 @@ async function renderPaymentProviders() {
   app().innerHTML = `
     <div class="registry-page mt-fade-in">
       <div class="flex flex-wrap justify-between items-center gap-3 mt-6 mb-4">
-        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 💳 Payment Providers</h1>
-        <button id="backBtn" class="text-sm text-gray-500">← Back to Owner Dashboard</button>
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">${escapeHtml(title)} → 💳 Payment Providers</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back${title !== 'Owner Dashboard' ? ' to ' + escapeHtml(title) : ''}</button>
       </div>
       <div class="mt-card p-5 mb-5">
         <h2 class="font-medium text-sm mb-3">Configure Paystack</h2>
@@ -979,7 +979,7 @@ async function renderPaymentProviders() {
       </div>
     </div>`;
 
-  document.getElementById('backBtn').onclick = () => renderOwnerDashboard();
+  document.getElementById('backBtn').onclick = () => backFn();
 
   document.getElementById('savePaystackBtn').onclick = async () => {
     const feedback = document.getElementById('paystackFeedback');
@@ -1045,7 +1045,7 @@ async function renderAccountsDashboard() {
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
-  document.getElementById('paymentProvidersBtn').onclick = () => renderPaymentProviders();
+  document.getElementById('paymentProvidersBtn').onclick = () => renderPaymentProviders(renderAccountsDashboard, 'Accounts & Billing');
 }
 
 init();
