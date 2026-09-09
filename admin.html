@@ -204,8 +204,7 @@ function renderDashboard() {
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll-history', label: 'Payroll History' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
-    can('manage_settings') || can('manage_admins') ? { id: 'settings', label: 'Settings' } : null,
-    { id: 'admins', label: 'Admins' },
+    can('manage_settings') ? { id: 'settings', label: 'Settings' } : null,
     { id: 'contact', label: 'Contact & Support' },
   ].filter(Boolean);
 
@@ -244,7 +243,6 @@ async function renderTabContent() {
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
   if (activeTab === 'payments') return renderPayments(el);
-  if (activeTab === 'admins') return renderAdmins(el);
   if (activeTab === 'settings') return renderSettings(el);
   if (activeTab === 'contact') return renderContact(el);
 
@@ -1759,90 +1757,6 @@ async function renderPayments(el) {
     });
   } catch (err) {
     el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(err.message || 'Could not load payables.')}</p>`;
-  }
-}
-
-async function renderAdmins(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading admins…</p>`;
-  try {
-    const { data: admins, error } = await sb.rpc('admin_list_company', { p_company_id: myProfile.company_id });
-    if (error) throw error;
-    const rows = Array.isArray(admins) ? admins : [];
-    const isOwner = myProfile.role === 'owner';
-    const canManage = can('manage_admins');
-
-    el.innerHTML = `
-      <div class="mt-card p-6 mt-fade-in">
-        <h2 class="text-lg font-bold mb-2">Admins</h2>
-        ${canManage ? `
-        <div class="border rounded-xl p-3 mb-5">
-          <h3 class="font-medium text-sm mb-2">Invite a new admin</h3>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-            <input id="inviteEmail" type="email" class="border rounded-lg px-3 py-2 text-sm" placeholder="Email">
-            <select id="inviteRole" class="border rounded-lg px-3 py-2 text-sm">
-              <option value="manager">Manager</option>
-              <option value="payroll_officer">Payroll Officer</option>
-              <option value="viewer">Viewer</option>
-              ${isOwner ? '<option value="admin">Admin</option>' : ''}
-            </select>
-          </div>
-          <button id="createInviteBtn" type="button" class="mt-btn-primary text-sm">Generate Invite Code</button>
-          <p id="inviteFeedback" class="text-sm mt-2"></p>
-        </div>` : ''}
-        <h3 class="font-medium text-sm mb-2">Company Admins</h3>
-        <div class="space-y-2">
-          ${rows.map(a => `<div class="flex justify-between items-center border rounded-xl p-3 bg-white">
-            <div>
-              <p class="font-semibold text-sm">${escapeHtml(a.email || '')} <span class="text-xs text-gray-500">(${a.role})</span></p>
-              <p class="text-xs text-gray-500">${a.is_active ? 'Active' : 'Inactive'}</p>
-            </div>
-            ${(isOwner || canManage) && a.id !== myProfile.id ? `
-            <div class="flex gap-2">
-              <select class="roleUpdate border rounded-lg px-2 py-1 text-xs" data-id="${a.id}">
-                <option value="manager" ${a.role === 'manager' ? 'selected' : ''}>Manager</option>
-                <option value="payroll_officer" ${a.role === 'payroll_officer' ? 'selected' : ''}>Payroll Officer</option>
-                <option value="viewer" ${a.role === 'viewer' ? 'selected' : ''}>Viewer</option>
-                ${isOwner ? '<option value="admin" ' + (a.role === 'admin' ? 'selected' : '') + '>Admin</option>' : ''}
-              </select>
-              <button type="button" class="updateRoleBtn mt-btn-primary text-xs" data-id="${a.id}">Update</button>
-              <button type="button" class="deactivateBtn mt-btn-danger-outline text-xs" data-id="${a.id}">Deactivate</button>
-            </div>` : ''}
-          </div>`).join('')}
-        </div>
-      </div>`;
-
-    if (canManage) {
-      document.getElementById('createInviteBtn').onclick = async () => {
-        const feedback = document.getElementById('inviteFeedback');
-        const email = document.getElementById('inviteEmail').value.trim();
-        const role = document.getElementById('inviteRole').value;
-        if (!email) { feedback.innerHTML = '<span class="text-red-600">Email is required.</span>'; return; }
-        feedback.innerHTML = '<span class="text-blue-600">Generating…</span>';
-        const { data, error } = await sb.rpc('admin_create_invite', { p_company_id: myProfile.company_id, p_email: email, p_role: role, p_created_by: myProfile.id });
-        feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Invite code: <span class="font-mono">${escapeHtml(data)}</span></span>`;
-      };
-    }
-
-    document.querySelectorAll('.updateRoleBtn').forEach(btn => {
-      btn.onclick = async () => {
-        const id = btn.dataset.id;
-        const role = btn.parentNode.querySelector('.roleUpdate').value;
-        const { error } = await sb.rpc('admin_update_role', { p_actor_id: myProfile.id, p_admin_id: id, p_role: role });
-        if (error) { showToast('error', 'Role update failed', error.message); return; }
-        renderAdmins(el);
-      };
-    });
-
-    document.querySelectorAll('.deactivateBtn').forEach(btn => {
-      btn.onclick = async () => {
-        const id = btn.dataset.id;
-        const { error } = await sb.rpc('admin_deactivate', { p_actor_id: myProfile.id, p_admin_id: id });
-        if (error) { showToast('error', 'Deactivate failed', error.message); return; }
-        renderAdmins(el);
-      };
-    });
-  } catch (err) {
-    el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(err.message || 'Could not load admins.')}</p>`;
   }
 }
 

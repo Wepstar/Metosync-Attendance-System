@@ -703,7 +703,10 @@ async function renderRegistry() {
     <div class="registry-page mt-fade-in">
       <div class="flex justify-between items-center mt-6 mb-4">
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">📋 Registry <span class="text-xs font-normal text-green-600 align-middle">● live</span></h1>
-        <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+        <div class="flex items-center gap-3">
+          <button id="registryAdminsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">👤 Admins</button>
+          <button id="backBtn" class="text-sm text-gray-500">← Back</button>
+        </div>
       </div>
       ${statsCardsHtml(statsRow)}
       <div class="mt-card p-5 mb-5 registry-company-panel">
@@ -723,6 +726,7 @@ async function renderRegistry() {
     </div>`;
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
+  document.getElementById('registryAdminsBtn').onclick = () => renderRegistryAdmins();
   wireCompanyInteractions(companies || []);
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_onboarding_invite');
@@ -737,6 +741,111 @@ async function renderRegistry() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance_status_changes' }, () => renderRegistry())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'company_activity_log' }, () => renderRegistry())
     .subscribe();
+}
+
+async function renderRegistryAdmins() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading admin registry…</p>`;
+  const [{ data: admins, error: aErr }, { data: companies, error: cErr }] = await Promise.all([
+    sb.rpc('registry_admin_list_all'),
+    sb.rpc('platform_list_companies')
+  ]);
+  if (aErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(aErr.message)}</p>`; return; }
+  if (cErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(cErr.message)}</p>`; return; }
+
+  const rows = Array.isArray(admins) ? admins : [];
+  const companyList = Array.isArray(companies) ? companies : [];
+  const companyOptions = companyList.map(c => `<option value="${c.id}">${escapeHtml(c.name || '')}</option>`).join('');
+
+  const byCompany = new Map();
+  rows.forEach(r => {
+    const name = r.company_name || 'No company';
+    if (!byCompany.has(name)) byCompany.set(name, []);
+    byCompany.get(name).push(r);
+  });
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Registry → 👤 Admin Management</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Registry</button>
+      </div>
+      <div class="mt-card p-5 mb-5">
+        <h2 class="font-medium text-sm mb-3">Invite Admin for a Company</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+          <select id="inviteCompanyId" class="border rounded-lg px-3 py-2 text-sm">${companyOptions || '<option value="">No companies</option>'}</select>
+          <input id="inviteEmail" type="email" class="border rounded-lg px-3 py-2 text-sm" placeholder="Email">
+          <select id="inviteRole" class="border rounded-lg px-3 py-2 text-sm">
+            <option value="manager">Manager</option>
+            <option value="payroll_officer">Payroll Officer</option>
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
+          </select>
+        </div>
+        <button id="registryCreateInviteBtn" type="button" class="mt-btn-primary text-sm">Generate Invite Code</button>
+        <p id="inviteFeedback" class="text-sm mt-2"></p>
+      </div>
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">All Company Admins</h2>
+        ${byCompany.size ? Array.from(byCompany.entries()).map(([company, list]) => `
+          <div class="mb-4">
+            <h3 class="font-semibold text-sm mb-2">${escapeHtml(company)}</h3>
+            <div class="space-y-2">
+              ${list.map(a => `<div class="flex justify-between items-center border rounded-xl p-3 bg-white">
+                <div>
+                  <p class="font-semibold text-sm">${escapeHtml(a.email || '')} <span class="text-xs text-gray-500">(${a.role})</span></p>
+                  <p class="text-xs text-gray-500">${a.is_active ? 'Active' : 'Inactive'}</p>
+                </div>
+                <div class="flex gap-2">
+                  <select class="roleUpdate border rounded-lg px-2 py-1 text-xs" data-id="${a.id}">
+                    <option value="manager" ${a.role === 'manager' ? 'selected' : ''}>Manager</option>
+                    <option value="payroll_officer" ${a.role === 'payroll_officer' ? 'selected' : ''}>Payroll Officer</option>
+                    <option value="viewer" ${a.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+                    <option value="admin" ${a.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    <option value="owner" ${a.role === 'owner' ? 'selected' : ''}>Owner</option>
+                  </select>
+                  <button type="button" class="updateRoleBtn mt-btn-primary text-xs" data-id="${a.id}">Update</button>
+                  <button type="button" class="deactivateBtn mt-btn-danger-outline text-xs" data-id="${a.id}">Deactivate</button>
+                </div>
+              </div>`).join('')}
+            </div>
+          </div>
+        `).join('') : '<p class="text-gray-400 text-sm">No admins found.</p>'}
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderRegistry();
+
+  document.getElementById('registryCreateInviteBtn').onclick = async () => {
+    const feedback = document.getElementById('inviteFeedback');
+    const companyId = document.getElementById('inviteCompanyId').value;
+    const email = document.getElementById('inviteEmail').value.trim();
+    const role = document.getElementById('inviteRole').value;
+    if (!companyId || !email) { feedback.innerHTML = '<span class="text-red-600">Company and email are required.</span>'; return; }
+    feedback.innerHTML = '<span class="text-blue-600">Generating…</span>';
+    const { data, error } = await sb.rpc('registry_admin_invite', { p_company_id: companyId, p_email: email, p_role: role, p_created_by: state.session?.user?.id });
+    feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Invite code: <span class="font-mono">${escapeHtml(data)}</span></span>`;
+  };
+
+  document.querySelectorAll('.updateRoleBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const role = btn.parentNode.querySelector('.roleUpdate').value;
+      const { error } = await sb.rpc('registry_admin_update_role', { p_admin_id: id, p_role: role });
+      if (error) { alert('Role update failed: ' + error.message); return; }
+      renderRegistryAdmins();
+    };
+  });
+
+  document.querySelectorAll('.deactivateBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const { error } = await sb.rpc('registry_admin_deactivate', { p_admin_id: id });
+      if (error) { alert('Deactivate failed: ' + error.message); return; }
+      renderRegistryAdmins();
+    };
+  });
 }
 
 async function renderWatchguardDashboard() {

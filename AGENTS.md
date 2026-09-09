@@ -54,6 +54,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `contact` → `renderContact`
 
 > **Note**: Watch Guard was removed from the admin menu and now lives in the Owner Dashboard (`platform.html`) with whole-system access.
+> **Note**: Admin management (`Admins` tab) was removed from `admin.html` and now lives in the Registry side (`platform.html`) for support-team access.
 
 ### Attendance Tab (`renderAttendance`)
 **What it does**
@@ -136,7 +137,23 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 **Common issue**: `platform_section_passwords_section_check` violation → run `021_fix_section_password_constraint.sql`.
 
-## 6. Watchguard
+## 6. Registry Admin Management
+
+### Location
+- `platform.html` → `renderRegistry()` has an **Admins** button.
+- `renderRegistryAdmins()` shows all admins across all companies and allows invite/role/deactivate.
+
+### RPCs (`029_registry_admins.sql`)
+- `registry_admin_list_all()` — returns every admin user with company name.
+- `registry_admin_invite(p_company_id, p_email, p_role, p_created_by)` — generates an invite code for any company.
+- `registry_admin_update_role(p_admin_id, p_role)` — updates an admin role.
+- `registry_admin_deactivate(p_admin_id)` — deactivates an admin.
+
+### Common issues
+- `registry_admin_list_all` fails → migration `029` not run or RLS/GRANT missing.
+- Invite not working → `admin_invites` table missing or `p_company_id` null.
+
+## 7. Watchguard
 
 ### Tables
 - `watchguard_events` — immutable action log.
