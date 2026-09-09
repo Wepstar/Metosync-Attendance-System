@@ -1673,9 +1673,13 @@ async function renderPayments(el) {
                 <button type="button" class="payPayableBtn mt-btn-primary text-xs" data-payroll-id="${r.payroll_entry_id}" data-staff-id="${r.staff_id}" data-amount="${r.pending_amount}">Pay</button>
               </div>
               <div class="payableForm hidden mt-3 space-y-2">
-                <input type="text" class="bankAccount border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank account number">
-                <input type="text" class="bankCode border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank code">
-                <input type="text" class="bankName border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank name">
+                <select class="paymentMethod border rounded-lg px-3 py-2 text-sm w-full">
+                  <option value="bank">Bank Transfer</option>
+                  <option value="momo">Mobile Money (MoMo)</option>
+                </select>
+                <input type="text" class="bankAccount border rounded-lg px-3 py-2 text-sm w-full" placeholder="Account number / Phone number">
+                <input type="text" class="bankCode border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank code / MoMo provider (MTN, VOD, TGO)">
+                <input type="text" class="bankName border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank name / MoMo wallet name">
                 <button type="button" class="confirmPayBtn mt-btn-primary text-sm w-full" data-payroll-id="${r.payroll_entry_id}" data-staff-id="${r.staff_id}" data-amount="${r.pending_amount}">Pay with Paystack</button>
                 <p class="payableFeedback text-sm"></p>
               </div>
@@ -1705,16 +1709,18 @@ async function renderPayments(el) {
         const payrollId = btn.dataset.payrollId;
         const staffId = btn.dataset.staffId;
         const amount = parseFloat(btn.dataset.amount);
+        const method = form.querySelector('.paymentMethod').value;
         const account = form.querySelector('.bankAccount').value.trim();
         const code = form.querySelector('.bankCode').value.trim();
         const name = form.querySelector('.bankName').value.trim();
-        if (!account || !code || !name) { feedback.innerHTML = '<span class="text-red-600">Bank details required.</span>'; return; }
+        if (!account || !code || !name) { feedback.innerHTML = '<span class="text-red-600">Payment details required.</span>'; return; }
+        if (method === 'momo' && !['MTN','VOD','TGO'].includes(code.toUpperCase())) { feedback.innerHTML = '<span class="text-red-600">MoMo provider must be MTN, VOD, or TGO.</span>'; return; }
 
         feedback.innerHTML = '<span class="text-blue-600">Initiating Paystack payout…</span>';
         try {
           const { data, error } = await sb.functions.invoke('paystack-payout', {
             method: 'POST',
-            body: { payroll_entry_id: payrollId, staff_id: staffId, amount, reason: 'Payroll payout', bank_account_number: account, bank_code: code, bank_name: name }
+            body: { payroll_entry_id: payrollId, staff_id: staffId, amount, method, reason: 'Payroll payout', bank_account_number: account, bank_code: code, bank_name: name }
           });
           if (error) throw new Error(error.message || 'Payout request failed');
           feedback.innerHTML = data.success

@@ -39,9 +39,15 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Not an admin" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { payroll_entry_id, staff_id, amount, reason, bank_account_number, bank_code, bank_name } = await req.json();
+    const { payroll_entry_id, staff_id, amount, reason, method = "bank", bank_account_number, bank_code, bank_name } = await req.json();
     if (!payroll_entry_id || !staff_id || !amount || !bank_account_number || !bank_code || !bank_name) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const transferMethod = method === "momo" ? "mobile_money" : "nuban";
+    const validMomoProviders = new Set(["MTN", "VOD", "TGO"]);
+    if (transferMethod === "mobile_money" && !validMomoProviders.has(bank_code.toUpperCase())) {
+      return new Response(JSON.stringify({ error: "Invalid MoMo provider code. Use MTN, VOD, or TGO" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const companyId = adminProfile.company_id;
@@ -87,10 +93,10 @@ serve(async (req: Request) => {
       method: "POST",
       headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        type: "nuban",
+        type: transferMethod,
         name: staff.full_name,
         account_number: bank_account_number,
-        bank_code: bank_code,
+        bank_code: transferMethod === "mobile_money" ? bank_code.toUpperCase() : bank_code,
         currency: provider.currency || "GHS",
       }),
     });
@@ -128,7 +134,7 @@ serve(async (req: Request) => {
         p_reference: reference,
         p_status: transferData.status === "success" ? "completed" : "processing",
         p_provider_reference: transferData.transfer_code,
-        p_metadata: { recipient_code: recipientCode, transfer: transferData },
+        p_metadata: { method: transferMethod, recipient_code: recipientCode, transfer: transferData },
       });
     }
 
