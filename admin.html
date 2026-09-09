@@ -200,8 +200,6 @@ function renderDashboard() {
   const tabs = [
     can('manage_staff') ? { id: 'staff', label: 'Staff' } : null,
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
-    can('manage_staff') ? { id: 'location', label: 'Location Checker' } : null,
-    can('broadcast_notifications') ? { id: 'notifications', label: 'Notifications' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll-history', label: 'Payroll History' } : null,
@@ -243,8 +241,6 @@ async function renderTabContent() {
 
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
-  if (activeTab === 'location') return renderLocationChecker(el);
-  if (activeTab === 'notifications') return renderNotificationsAdmin(el);
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
@@ -1303,6 +1299,9 @@ async function renderAttendance(el) {
       <button id="saveAttendanceBtn" type="button" class="mt-btn-primary">Save Status</button>
     </div>
 
+    ${can('manage_staff') ? `<div id="attendance-location" class="mt-4"></div>` : ''}
+    ${can('broadcast_notifications') ? `<div id="attendance-notifications" class="mt-4"></div>` : ''}
+
     <div class="mt-card p-4 overflow-x-auto mt-fade-in">
       <div class="flex justify-between items-center mb-2">
         <h2 class="font-medium">Attendance for ${attendanceDate} <span class="text-xs font-normal text-green-600 align-middle">● live</span> <button id="refreshAttendanceBtn" type="button" class="text-sm" title="Refresh attendance">🔄</button> <button id="exportAttendanceBtn" type="button" class="text-sm" title="Export CSV">⬇️</button></h2>
@@ -1502,6 +1501,16 @@ async function renderAttendance(el) {
       renderAttendance(el);
     };
   });
+
+  // Location Checker and Broadcast Notifications live under Attendance.
+  if (can('manage_staff')) {
+    const attendanceLocation = document.getElementById('attendance-location');
+    if (attendanceLocation) await renderLocationChecker(attendanceLocation);
+  }
+  if (can('broadcast_notifications')) {
+    const attendanceNotifications = document.getElementById('attendance-notifications');
+    if (attendanceNotifications) await renderNotificationsAdmin(attendanceNotifications);
+  }
 
   // Real-time pulse: any attendance change for this date appears instantly, no reload.
   if (attendanceChannel) { sb.removeChannel(attendanceChannel); attendanceChannel = null; }
