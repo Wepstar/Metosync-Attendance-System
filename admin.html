@@ -195,6 +195,7 @@ function renderDashboard() {
     plan !== 'payroll' ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' ? { id: 'payroll', label: 'Payroll' } : null,
     plan !== 'attendance' ? { id: 'payroll-history', label: 'Payroll History' } : null,
+    { id: 'payments', label: 'Payments' },
     { id: 'watchguard', label: 'Watch Guard' },
     { id: 'settings', label: 'Settings' },
     { id: 'contact', label: 'Contact & Support' },
@@ -236,6 +237,7 @@ async function renderTabContent() {
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
+  if (activeTab === 'payments') return renderPayments(el);
   if (activeTab === 'watchguard') return renderWatchGuard(el);
   if (activeTab === 'settings') return renderSettings(el);
   if (activeTab === 'contact') return renderContact(el);
@@ -1643,6 +1645,90 @@ async function renderSettings(el) {
     document.getElementById('dangerMsg').textContent = 'All data wiped.';
     renderSettings(el);
   };
+}
+
+async function renderPayments(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll payables…</p>`;
+  try {
+    const [{ data: payables, error: pErr }, { data: history, error: hErr }] = await Promise.all([
+      sb.rpc('payroll_payables', { p_company_id: myProfile.company_id }),
+      sb.from('payment_requests').select('*').eq('company_id', myProfile.company_id).order('created_at', { ascending: false }).limit(20)
+    ]);
+    if (pErr) throw pErr;
+    const rows = Array.isArray(payables) ? payables : [];
+    const historyRows = Array.isArray(history) ? history : [];
+
+    el.innerHTML = `
+      <div class="mt-card p-6 mt-fade-in">
+        <h2 class="text-lg font-bold mb-2">Payroll Payouts</h2>
+        <p class="text-sm text-gray-500 mb-4">Pay staff net pay via Paystack Transfer.</p>
+        <div class="space-y-3 mb-6">
+          ${rows.length ? rows.map(r => `
+            <div class="border rounded-xl p-3 bg-white">
+              <div class="flex justify-between items-start">
+                <div>
+                  <p class="font-semibold text-sm">${escapeHtml(r.full_name)}</p>
+                  <p class="text-xs text-gray-500">${escapeHtml(r.period_name || '')} · Net: ${r.net_pay} · Pending: ${r.pending_amount}</p>
+                </div>
+                <button type="button" class="payPayableBtn mt-btn-primary text-xs" data-payroll-id="${r.payroll_entry_id}" data-staff-id="${r.staff_id}" data-amount="${r.pending_amount}">Pay</button>
+              </div>
+              <div class="payableForm hidden mt-3 space-y-2">
+                <input type="text" class="bankAccount border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank account number">
+                <input type="text" class="bankCode border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank code">
+                <input type="text" class="bankName border rounded-lg px-3 py-2 text-sm w-full" placeholder="Bank name">
+                <button type="button" class="confirmPayBtn mt-btn-primary text-sm w-full" data-payroll-id="${r.payroll_entry_id}" data-staff-id="${r.staff_id}" data-amount="${r.pending_amount}">Pay with Paystack</button>
+                <p class="payableFeedback text-sm"></p>
+              </div>
+            </div>
+          `).join('') : '<p class="text-gray-400 text-sm">No pending payroll payables.</p>'}
+        </div>
+        <h3 class="font-medium text-sm mb-2">Recent Payment Requests</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs mt-table">
+            <thead><tr><th class="text-left">Reference</th><th class="text-left">Amount</th><th class="text-left">Status</th><th class="text-left">When</th></tr></thead>
+            <tbody>${historyRows.map(h => `<tr class="border-b"><td class="py-2 px-3">${escapeHtml(h.reference)}</td><td class="py-2 px-3">${h.amount} ${h.currency}</td><td class="py-2 px-3">${h.status}</td><td class="py-2 px-3">${new Date(h.created_at).toLocaleString()}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    document.querySelectorAll('.payPayableBtn').forEach(btn => {
+      btn.onclick = () => {
+        const form = btn.parentNode.nextElementSibling;
+        form.classList.toggle('hidden');
+      };
+    });
+
+    document.querySelectorAll('.confirmPayBtn').forEach(btn => {
+      btn.onclick = async () => {
+        const form = btn.parentNode;
+        const feedback = form.querySelector('.payableFeedback');
+        const payrollId = btn.dataset.payrollId;
+        const staffId = btn.dataset.staffId;
+        const amount = parseFloat(btn.dataset.amount);
+        const account = form.querySelector('.bankAccount').value.trim();
+        const code = form.querySelector('.bankCode').value.trim();
+        const name = form.querySelector('.bankName').value.trim();
+        if (!account || !code || !name) { feedback.innerHTML = '<span class="text-red-600">Bank details required.</span>'; return; }
+
+        feedback.innerHTML = '<span class="text-blue-600">Initiating Paystack payout…</span>';
+        try {
+          const { data, error } = await sb.functions.invoke('paystack-payout', {
+            method: 'POST',
+            body: { payroll_entry_id: payrollId, staff_id: staffId, amount, reason: 'Payroll payout', bank_account_number: account, bank_code: code, bank_name: name }
+          });
+          if (error) throw new Error(error.message || 'Payout request failed');
+          feedback.innerHTML = data.success
+            ? `<span class="text-green-700">Initiated: ${escapeHtml(data.reference)}</span>`
+            : `<span class="text-red-600">${escapeHtml(data.error || 'Failed')}</span>`;
+          if (data.success) setTimeout(() => renderPayments(el), 1500);
+        } catch (err) {
+          feedback.innerHTML = `<span class="text-red-600">${escapeHtml(err.message)}</span>`;
+        }
+      };
+    });
+  } catch (err) {
+    el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(err.message || 'Could not load payables.')}</p>`;
+  }
 }
 
 function renderContact(el) {

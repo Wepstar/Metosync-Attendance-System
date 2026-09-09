@@ -524,6 +524,7 @@ async function renderOwnerDashboard() {
         <div class="flex items-center gap-3">
           <button id="watchguardMenuBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #b91c1c;">🛡️ Watchguard</button>
           <button id="notificationSettingsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">🔔 Alerts</button>
+          <button id="paymentProvidersBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #10b981;">💳 Payments</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
       </div>
@@ -548,6 +549,7 @@ async function renderOwnerDashboard() {
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
   document.getElementById('watchguardMenuBtn').onclick = () => renderWatchguardDashboard();
   document.getElementById('notificationSettingsBtn').onclick = () => renderNotificationSettings();
+  document.getElementById('paymentProvidersBtn').onclick = () => renderPaymentProviders();
   wireCompanyInteractions(companies || [], true);
   document.getElementById('genInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_platform_invite');
@@ -933,6 +935,73 @@ async function renderNotificationSettings() {
       renderNotificationSettings();
     };
   });
+}
+
+async function renderPaymentProviders() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading payment providers…</p>`;
+  const { data: providers, error } = await sb.rpc('watchguard_list_payment_providers');
+  if (error) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(error.message)}</p>`; return; }
+  const rows = Array.isArray(providers) ? providers : [];
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex flex-wrap justify-between items-center gap-3 mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Owner Dashboard → 💳 Payment Providers</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Owner Dashboard</button>
+      </div>
+      <div class="mt-card p-5 mb-5">
+        <h2 class="font-medium text-sm mb-3">Configure Paystack</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <input id="paystackPublicKey" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Public key (pk_test_...)">
+          <input id="paystackSecretKey" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Secret key (sk_test_...)">
+          <input id="paystackWebhookSecret" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Webhook secret">
+          <input id="paystackCurrency" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Currency (GHS)" value="GHS">
+          <select id="paystackLive" class="border rounded-lg px-3 py-2 text-sm">
+            <option value="false" selected>Test mode</option>
+            <option value="true">Live mode</option>
+          </select>
+        </div>
+        <button id="savePaystackBtn" type="button" class="mt-btn-primary text-sm">Save Paystack Provider</button>
+        <p id="paystackFeedback" class="text-sm mt-2"></p>
+      </div>
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">Configured Providers</h2>
+        <div class="space-y-2">
+          ${rows.length ? rows.map(p => `<div class="flex justify-between items-center border rounded-xl p-3 bg-white">
+            <div>
+              <p class="font-semibold text-sm">${escapeHtml(p.provider)} <span class="text-xs text-gray-500">(${p.currency})</span></p>
+              <p class="text-xs text-gray-500">Public: ${escapeHtml((p.public_key || '').slice(0, 12))}… · Mode: ${p.is_live ? 'Live' : 'Test'} · ${p.enabled ? 'Enabled' : 'Disabled'}</p>
+            </div>
+          </div>`).join('') : '<p class="text-gray-400 text-sm">No providers configured yet.</p>'}
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderOwnerDashboard();
+
+  document.getElementById('savePaystackBtn').onclick = async () => {
+    const feedback = document.getElementById('paystackFeedback');
+    const publicKey = document.getElementById('paystackPublicKey').value.trim();
+    const secretKey = document.getElementById('paystackSecretKey').value.trim();
+    const webhookSecret = document.getElementById('paystackWebhookSecret').value.trim();
+    const currency = document.getElementById('paystackCurrency').value.trim() || 'GHS';
+    const isLive = document.getElementById('paystackLive').value === 'true';
+    if (!secretKey) { feedback.innerHTML = '<span class="text-red-600">Secret key is required.</span>'; return; }
+    feedback.innerHTML = '<span class="text-blue-600">Saving…</span>';
+    const { error } = await sb.rpc('watchguard_set_payment_provider', {
+      p_company_id: null,
+      p_provider: 'paystack',
+      p_public_key: publicKey,
+      p_secret_key: secretKey,
+      p_webhook_secret: webhookSecret,
+      p_currency: currency,
+      p_is_live: isLive,
+      p_enabled: true
+    });
+    feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Paystack provider saved.</span>`;
+    if (!error) setTimeout(renderPaymentProviders, 600);
+  };
 }
 
 init();
