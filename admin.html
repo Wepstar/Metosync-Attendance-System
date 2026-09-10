@@ -16,6 +16,13 @@
 <style>
   .cycleStatusBtn { cursor: pointer; transition: opacity 160ms ease; }
   .cycleStatusBtn:hover { opacity: 0.75; }
+  .payroll-content .mt-btn-primary { background: #0d2a4d; }
+  .payroll-content .mt-btn-primary:hover { background: #091f38; }
+  .payroll-content .mt-btn-outline { color: #0d2a4d; border-color: #0d2a4d; }
+  .payroll-content .mt-btn-outline:hover { background: #e6eef7; }
+  .payroll-content .mt-icon-btn.edit { background: #dbeafe; color: #1e40af; }
+  .payroll-subtabs { margin-top: 1rem; }
+  .payroll-subtabs .mt-tab.active { background: #0d2a4d; color: white; }
 </style>
 </head>
 <body class="min-h-screen" style="background: var(--mt-bg);">
@@ -435,7 +442,7 @@ async function renderNotificationsAdmin(el) {
   }
 }
 
-let payrollSubTab = 'quickpay';
+let payrollSubTab = 'general';
 let payrollState = { staff: [], entries: [], deductions: [], period: null, previews: new Map() };
 
 function payrollValue(data, ...keys) {
