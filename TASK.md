@@ -81,6 +81,73 @@ Check items off as they're completed. This file is the actual answer to
 - [ ] Set up live Paystack key properly when that time comes (reminder is
       standing)
 
+## ✅ Done — role invitation flow (decision + audit trail)
+
+- [x] Decided: signup stays minimal (owner only) — no role/position selection
+      at signup. Owner invites named people to specific roles afterward, in
+      Admin.
+- [x] Fixed a real gap: `admin_create_invite` and `admin_accept_invite`
+      previously did not write to `company_activity_log`, so inviting/
+      accepting a role never appeared in the platform Registry. Both now
+      call `log_company_activity`, so Registry's "activity" feed shows
+      `admin_invited` and `admin_invite_accepted` events automatically
+      (confirmed `registry_list_all_activity`/`registry_list_company_activity`
+      already read from that table — no Registry-side change needed)
+- [ ] Devin: build the "Invite team member" UI in Admin (role dropdown +
+      email, Invenity-style tile grid for role selection) — prompt below
+- [ ] Extend `SYSTEM_ROLES` beyond the current four (`super_admin`,
+      `payroll_manager`, `hr`, `view_only`) once new workspace roles are
+      finalized (blocks adding Payroll Manager/Administrator/Executive
+      Director as literal selectable roles, not just workspace names)
+
+## ✅ Done — portfolio catalog (Registry-editable roles)
+
+- [x] **Correction**: the role list given to Devin in the previous prompt was
+      wrong — it described `admin_users.system_role` (a mostly-unused,
+      separate column) instead of `admin_users.role`, which is what
+      `admin_create_invite` actually sets. Devin should NOT build against
+      "Super Admin/Payroll Manager/HR/View-Only" as previously stated.
+- [x] Created `portfolios` catalog table (code, display_name, description,
+      is_active, sort_order), replacing the hardcoded CHECK constraint on
+      `admin_users.role` with a proper foreign key — adding a new portfolio
+      going forward means inserting a row via Registry, not a migration
+- [x] Seeded with all 5 legacy roles (owner, admin, manager,
+      payroll_officer, viewer — preserved, no existing data broken) plus 13
+      new portfolios: Executive Director, Stores & Inventory, Operations
+      Manager, Sales & Marketing, Customer Service, Procurement, Compliance
+      & Legal, Training & Development, Security & Access, Board &
+      Governance, Audit & Internal Control, Strategy & Planning
+  - [x] Note: reused existing `admin` role/permissions as "Administrator"
+        rather than adding a duplicate code — worth confirming this is right
+- [x] Added `registry_list_portfolios()`, `registry_add_portfolio()`,
+      `registry_set_portfolio_active()` (platform-admin gated, for Registry
+      UI) and `list_active_portfolios()` (company-admin readable, for the
+      invite dropdown)
+- [ ] Devin: build Registry's portfolio management screen (list/add/
+      deactivate) and update the invite-role dropdown to call
+      `list_active_portfolios()` instead of a hardcoded list
+
+## ✅ Done — closing the last known critical items
+
+- [x] Removed the dormant `METO-` testing-mode bypass from
+      `check_onboarding_invite` and `create_company_and_owner` — both now
+      require a genuine active, unused, unexpired invite row, no exceptions
+- [x] **Found while fixing the above (more severe than originally flagged)**:
+      `create_company_and_owner` sets `system_role = 'super_admin'` on every
+      new company's owner — meaning the `onboarding_invites` "Platform
+      admins can create invites" policy (which checked
+      `system_role = 'super_admin'`) let **any company owner**, not just
+      platform staff, directly insert new onboarding invite codes,
+      bypassing `create_onboarding_invite`'s platform-admin gate via a
+      different path. Policy now correctly checks `is_platform_admin()`
+- [x] `create_company_and_owner` now explicitly sets `admin_users.role =
+      'owner'` (previously relied on an implicit default, never set explicitly)
+- [ ] Still open: harmonize remaining `system_role` usage elsewhere with the
+      `is_platform_admin()`/`platform_admins` mechanism (lower urgency now
+      that the one exploitable instance is fixed)
+- [ ] Still open: edge functions, storage bucket policies, auth config,
+      migration history audits; minor enumeration risks
+
 ## ⬜ Phase 1 — Foundation
 
 - [ ] **Administrator workspace**

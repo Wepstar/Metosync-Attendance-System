@@ -20,6 +20,21 @@
   .dot.active{width:20px;background:#ffffff;}
   .bg-noise{position:relative;}
   .bg-noise::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);background-size:20px 20px;pointer-events:none;}
+
+  /* circling fire flame loader */
+  .flame-wrap{position:relative;width:104px;height:104px;}
+  .flame-ring{position:absolute;inset:0;border-radius:50%;border:3px solid transparent;border-top-color:#ef4444;border-right-color:#f97316;box-shadow:0 0 18px rgba(239,68,68,.25), inset 0 0 18px rgba(249,115,22,.12);animation:flameSpin .9s linear infinite;}
+  .flame-ring2{position:absolute;inset:9px;border-radius:50%;border:2px dashed rgba(239,68,68,.4);animation:flameSpin 2.4s linear infinite reverse;}
+  .flame{position:absolute;left:50%;bottom:24px;width:24px;height:42px;transform:translateX(-50%);background:linear-gradient(#fde68a 0%,#f97316 45%,#ef4444 80%,#b91c1c 100%);border-radius:50% 50% 22% 22%/62% 62% 38% 38%;transform-origin:bottom center;animation:flameFlicker .28s ease-in-out infinite alternate;filter:drop-shadow(0 0 14px rgba(239,68,68,.65));}
+  .flame::before{content:'';position:absolute;left:50%;bottom:5px;width:10px;height:16px;transform:translateX(-50%);background:#fef3c7;border-radius:50% 50% 30% 30%;animation:flameFlicker .22s ease-in-out infinite alternate-reverse;}
+  .spark{position:absolute;left:50%;top:50%;width:6px;height:6px;border-radius:50%;background:#f97316;box-shadow:0 0 8px rgba(249,115,22,.9);animation:sparkOrbit 1.4s linear infinite;}
+  .spark.s2{width:5px;height:5px;background:#ef4444;animation-duration:1.9s;animation-direction:reverse;}
+  .spark.s3{width:4px;height:4px;background:#fbbf24;animation-duration:2.3s;}
+  @keyframes flameSpin{to{transform:rotate(360deg);}}
+  @keyframes flameFlicker{from{transform:translateX(-50%) scaleY(1) scaleX(1) rotate(-2.5deg);}to{transform:translateX(-50%) scaleY(1.14) scaleX(.9) rotate(2.5deg);}}
+  @keyframes sparkOrbit{from{transform:rotate(0deg) translateX(52px) rotate(0deg);opacity:1;}to{transform:rotate(360deg) translateX(52px) rotate(-360deg);opacity:.55;}}
+  .flame-fade-in{animation:flameFade .3s ease-out;}
+  @keyframes flameFade{from{opacity:0;transform:scale(.92);}to{opacity:1;transform:scale(1);}}
 </style>
 </head>
 <body class="min-h-screen bg-[#0a2f24]">
@@ -77,7 +92,22 @@ const ICONS = {
   arrow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>`,
 };
 
+function renderChecking() {
+  app().innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl p-10 sm:p-12 text-center flame-fade-in">
+      <div class="flame-wrap mx-auto mb-6">
+        <div class="flame-ring"></div>
+        <div class="flame-ring2"></div>
+        <span class="spark"></span><span class="spark s2"></span><span class="spark s3"></span>
+        <div class="flame"></div>
+      </div>
+      <h1 class="text-lg font-bold text-[#0d2a4d] mb-1">Verifying your invite code</h1>
+      <p class="text-sm text-gray-400">Hold on while we spark things up…</p>
+    </div>`;
+}
+
 function render() {
+  if (status === 'checking') return renderChecking();
   if (status === 'valid') return renderWelcome();
   app().innerHTML = `
     <div class="bg-white rounded-3xl shadow-2xl p-7 sm:p-8">
@@ -118,7 +148,11 @@ function render() {
     if (!code) { status = 'invalid'; render(); return; }
     status = 'checking'; render();
     try {
-      const { data, error } = await sb.rpc('check_onboarding_invite', { p_code: code });
+      const [res] = await Promise.all([
+        sb.rpc('check_onboarding_invite', { p_code: code }),
+        new Promise(r => setTimeout(r, 1400))
+      ]);
+      const { data, error } = res;
       if (error) {
         console.error('check_onboarding_invite failed:', error);
         status = 'error';
@@ -151,7 +185,18 @@ function renderWelcome() {
     </div>`;
   document.getElementById('signupBtn').onclick = () => {
     sessionStorage.setItem('metosync_onboarding_code', code);
-    window.location.href = 'onboarding.html?v=2';
+    app().innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl p-10 sm:p-12 text-center flame-fade-in">
+        <div class="flame-wrap mx-auto mb-6">
+          <div class="flame-ring"></div>
+          <div class="flame-ring2"></div>
+          <span class="spark"></span><span class="spark s2"></span><span class="spark s3"></span>
+          <div class="flame"></div>
+        </div>
+        <h1 class="text-lg font-bold text-[#0d2a4d] mb-1">Firing up your signup</h1>
+        <p class="text-sm text-gray-400">Taking you to registration…</p>
+      </div>`;
+    setTimeout(() => { window.location.href = 'onboarding.html?v=2'; }, 1100);
   };
 }
 render();
