@@ -134,7 +134,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Leave Tab (`renderLeave`)
 **What it does**
-- Top-level tab gated by `manage_staff`, sitting between Sites and Attendance.
+- Lives inside the Executive tab's sub-nav (Overview / Approvals / Reports / Leave) — not a top-level tab. `execSubTab === 'leave'` renders `renderLeave` into the Executive content area; deep link `admin.html?tab=executive&sub=leave`.
 - `admin_list_leave_requests(p_company_id, p_status)` lists requests; filter chips: **Waiting** (default, `p_status='pending'`), **All** (`p_status=null`), **Approved**, **Rejected**.
 - Each card reads in plain language: "Name — N days, Mar 4–6 — reason". Days/dates are computed defensively (`days`/`num_days`, or derived from `start_date`/`end_date`).
 - Pending cards show an optional note field plus **Approve**/**Reject** → `admin_review_leave_request(p_request_id, p_decision, p_reason)` with `p_decision` = `'approved'`/`'rejected'`; list reloads after each action.
@@ -146,7 +146,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Executive Tab (`renderExecutive`)
 **Structure**
-- Top-level tab shown only to `owner` and `executive_director` roles; sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**.
+- Top-level tab shown only to `owner` and `executive_director` roles; sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**, **Leave**.
 - Deep links: `admin.html?tab=executive&sub=overview|approvals|reports`.
 - All data comes from RPCs only — no direct table queries in this section.
 

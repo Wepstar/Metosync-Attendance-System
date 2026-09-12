@@ -228,7 +228,6 @@ function renderDashboard() {
     ['owner', 'executive_director'].includes(myProfile.role) ? { id: 'executive', label: 'Executive' } : null,
     can('manage_staff') ? { id: 'staff', label: 'Staff' } : null,
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
-    can('manage_staff') ? { id: 'leave', label: 'Leave' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
@@ -268,7 +267,6 @@ async function renderTabContent() {
   });
 
   if (activeTab === 'executive') return renderExecutive(el);
-  if (activeTab === 'leave') return renderLeave(el);
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'attendance') return renderAttendance(el);
@@ -2030,6 +2028,7 @@ function execSubTabsHtml() {
     ${tab('overview', 'Overview')}
     ${tab('approvals', 'Approvals')}
     ${tab('reports', 'Reports')}
+    ${tab('leave', 'Leave')}
   </div>`;
 }
 
@@ -2046,6 +2045,11 @@ async function renderExecutive(el) {
   }
   if (execSubTab === 'approvals') return renderExecApprovals(el);
   if (execSubTab === 'reports') return renderExecReports(el);
+  if (execSubTab === 'leave') {
+    el.innerHTML = `${execSubTabsHtml()}<div id="execContent"></div>`;
+    wireExecSubTabs(el);
+    return renderLeave(document.getElementById('execContent'));
+  }
   execSubTab = 'overview';
   return renderExecOverview(el);
 }
