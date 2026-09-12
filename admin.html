@@ -212,6 +212,7 @@ function renderDashboard() {
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll-history', label: 'Payroll History' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
     can('view_reports') ? { id: 'reports', label: 'Reports' } : null,
+    can('manage_admins') ? { id: 'invite', label: 'Invite Team' } : null,
     can('manage_settings') ? { id: 'settings', label: 'Settings' } : null,
     { id: 'contact', label: 'Contact & Support' },
   ].filter(Boolean);
@@ -252,6 +253,7 @@ async function renderTabContent() {
   if (activeTab === 'payroll') return renderPayroll(el);
   if (activeTab === 'payments') return renderPayments(el);
   if (activeTab === 'reports') return renderReports(el);
+  if (activeTab === 'invite') return renderInvite(el);
   if (activeTab === 'settings') return renderSettings(el);
   if (activeTab === 'contact') return renderContact(el);
 
@@ -1862,6 +1864,89 @@ async function renderReports(el) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+}
+
+// Roles that can be invited. Extend this list as new roles are added.
+const INVITE_ROLES = [
+  { value: 'owner', label: 'Super Admin', icon: '👑', desc: 'Full control over company settings, staff, payroll, and data' },
+  { value: 'payroll_officer', label: 'Payroll Manager', icon: '💰', desc: 'Manage payroll runs, payments, and reports' },
+  { value: 'admin', label: 'HR', icon: '👥', desc: 'Manage staff, sites, attendance, and notifications' },
+  { value: 'viewer', label: 'View-Only', icon: '👁️', desc: 'Read-only access to reports and dashboards' }
+];
+let inviteRole = INVITE_ROLES[0].value;
+
+function inviteRoleTileHtml(role, active) {
+  const activeCls = 'border-[#0d2a4d] ring-2 ring-[#0d2a4d]/20 bg-[#0d2a4d]/5';
+  const idleCls = 'border-gray-200 hover:border-gray-300';
+  return `<button type="button" class="inviteRoleTile text-left border rounded-xl p-4 transition ${active ? activeCls : idleCls}" data-role="${role.value}">
+    <div class="text-2xl mb-2">${role.icon}</div>
+    <div class="font-semibold text-sm" style="color: var(--mt-navy);">${role.label}</div>
+    <div class="text-xs text-gray-500 mt-1">${role.desc}</div>
+  </button>`;
+}
+
+function renderInvite(el) {
+  el.innerHTML = `
+    <div class="mt-card p-6 mt-fade-in max-w-2xl mx-auto">
+      <h2 class="font-bold text-lg mb-1" style="color: var(--mt-navy);">Invite a team member</h2>
+      <p class="text-sm text-gray-500 mb-5">Generate a 7-day invite code to add someone to ${escapeHtml(myCompany.name)}.</p>
+
+      <label class="text-xs font-medium text-gray-500" for="inviteEmail">Email address</label>
+      <input id="inviteEmail" type="email" placeholder="teammate@company.com" class="w-full border rounded-lg px-3 py-2 text-sm mb-5 mt-1">
+
+      <p class="text-xs font-medium text-gray-500 mb-2">Select a role</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" id="inviteRoleGrid">
+        ${INVITE_ROLES.map(r => inviteRoleTileHtml(r, r.value === inviteRole)).join('')}
+      </div>
+
+      <p id="inviteError" class="text-red-600 text-sm mb-3"></p>
+      <button id="sendInviteBtn" type="button" class="mt-btn-primary">Generate Invite Code</button>
+
+      <div id="inviteResult" class="hidden mt-5 border rounded-xl p-4" style="border-color: var(--mt-border); background: var(--mt-green-light);">
+        <p class="text-xs font-medium text-gray-500 mb-1">Invite code (expires in 7 days)</p>
+        <div class="flex items-center gap-2">
+          <code id="inviteCodeText" class="flex-1 font-mono text-lg font-bold tracking-widest" style="color: var(--mt-green-dark);"></code>
+          <button id="copyInviteBtn" type="button" class="mt-btn-outline text-sm">Copy</button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Share this code with the invited person — they'll enter it when signing up.</p>
+      </div>
+    </div>`;
+
+  el.querySelectorAll('.inviteRoleTile').forEach(tile => {
+    tile.onclick = () => {
+      inviteRole = tile.dataset.role;
+      el.querySelectorAll('.inviteRoleTile').forEach(t => {
+        const active = t.dataset.role === inviteRole;
+        ['border-[#0d2a4d]', 'ring-2', 'ring-[#0d2a4d]/20', 'bg-[#0d2a4d]/5'].forEach(c => t.classList.toggle(c, active));
+        ['border-gray-200', 'hover:border-gray-300'].forEach(c => t.classList.toggle(c, !active));
+      });
+    };
+  });
+
+  document.getElementById('sendInviteBtn').onclick = async () => {
+    const email = document.getElementById('inviteEmail').value.trim();
+    const err = document.getElementById('inviteError');
+    if (!email) { err.textContent = 'Enter an email address.'; return; }
+    err.textContent = '';
+    const btn = document.getElementById('sendInviteBtn');
+    btn.disabled = true; btn.textContent = 'Generating…';
+    const { data, error } = await sb.rpc('admin_create_invite', {
+      p_company_id: myProfile.company_id,
+      p_email: email,
+      p_role: inviteRole,
+      p_created_by: myProfile.id
+    });
+    btn.disabled = false; btn.textContent = 'Generate Invite Code';
+    if (error) { err.textContent = error.message; return; }
+    document.getElementById('inviteCodeText').textContent = data;
+    document.getElementById('inviteResult').classList.remove('hidden');
+  };
+
+  document.getElementById('copyInviteBtn').onclick = () => {
+    const code = document.getElementById('inviteCodeText').textContent;
+    const btn = document.getElementById('copyInviteBtn');
+    navigator.clipboard.writeText(code).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); });
   };
 }
 

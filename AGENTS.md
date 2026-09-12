@@ -47,10 +47,10 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `sites` → `renderSites`
 - `attendance` → `renderAttendance` (also embeds Location Checker + Broadcast Notifications)
 - `payroll` → `renderPayroll`
-- `payroll-history` → payroll history
 - `payments` → `renderPayments`
+- `reports` → `renderReports`
+- `invite` → `renderInvite` (owner only, `manage_admins`)
 - `settings` → settings
-- `admins` → `renderAdmins`
 - `contact` → `renderContact`
 
 > **Note**: Watch Guard was removed from the admin menu and now lives in the Owner Dashboard (`platform.html`) with whole-system access.
@@ -132,9 +132,10 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Payroll Tab (`admin.html`)
 **What it does**
-- Only the **💸 Quick Pay** sub-tab remains in the admin Payroll section.
-- The old General Payroll, Individual Payroll, and Taxes & Incentives sub-tabs were removed.
-- Links to **General Payroll** (`payroll.html`), **Taxes & Incentives** (`taxes.html`), and **Final Review** (`review.html`) workspaces are provided.
+- Payroll content lives inside the admin dashboard (same container as other tabs; no separate workspace pages, no Back button).
+- Bottom sub-tabs (inside the payroll card): **01 General Payroll**, **02 Taxes & Incentives**, **03 Final Review**, and **Quick Pay**.
+- Active sub-tab uses navy `#0d2a4d`; all payroll green was replaced with navy brand colors.
+- General Payroll (`payrollGeneralHtml`) needs an open draft period; if none exists a Start New Payroll Period form is shown.
 - Quick Pay lets an admin pay a staff member directly without a payroll entry.
 
 **What can go wrong**
@@ -146,6 +147,18 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Run `025` or `026` SQL and refresh schema.
 - Configure provider in Owner Dashboard or Accounts & Billing.
 - Check Edge Function logs in Supabase.
+
+### Invite Team Tab (`admin.html` → Invite Team)
+**What it does**
+- Owner-only tab (requires `manage_admins` permission).
+- Collects an email and a role from the `INVITE_ROLES` array in `admin.html` (icon-tile grid; extend the array to add roles).
+- Calls `admin_create_invite(p_company_id, p_email, p_role, p_created_by)` — returns an 8-char code valid for 7 days, shown with a Copy button.
+- `p_created_by` is `myProfile.id`; the server independently verifies `manage_admins` permission or `owner` role.
+
+**What can go wrong**
+- RPC returns "You do not have permission to invite admins." → caller lacks `manage_admins` (owner only today).
+- Tab hidden → `my_permissions` RPC missing `manage_admins`.
+- Invite accepted but wrong role → `p_role` must be one of `owner, admin, manager, payroll_officer, viewer` (`admin_users.role` constraint).
 
 ## 5. Platform Dashboard (`platform.html`)
 
