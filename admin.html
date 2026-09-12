@@ -1548,12 +1548,12 @@ async function renderAttendance(el) {
   if (attendanceSubTab === 'setstatus') return renderSetStatusDay(el);
   if (attendanceSubTab === 'bydate') return renderAttendanceByDate(el);
   if (attendanceSubTab === 'location' && can('manage_staff')) {
-    el.innerHTML = `<div id="attSub"></div>${attendanceSubTabsHtml()}`;
+    el.innerHTML = `${attendanceSubTabsHtml()}<div id="attSub"></div>`;
     wireAttendanceSubTabs(el);
     return renderLocationChecker(document.getElementById('attSub'));
   }
   if (attendanceSubTab === 'notify' && can('broadcast_notifications')) {
-    el.innerHTML = `<div id="attSub"></div>${attendanceSubTabsHtml()}`;
+    el.innerHTML = `${attendanceSubTabsHtml()}<div id="attSub"></div>`;
     wireAttendanceSubTabs(el);
     return renderNotificationsAdmin(document.getElementById('attSub'));
   }
@@ -1648,6 +1648,7 @@ async function renderAttendance(el) {
   }
 
   el.innerHTML = `
+    ${attendanceSubTabsHtml()}
     ${trendChart}
     <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4 mt-fade-in">${trendCards}</div>
 
@@ -1667,8 +1668,7 @@ async function renderAttendance(el) {
         <thead><tr><th><input type="checkbox" id="selectAllAttendance" aria-label="Select all staff"></th><th>Name</th><th>Site</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Quick Actions</th></tr></thead>
         <tbody id="attendanceBody">${staffList.map(attendanceRow).join('') || '<tr><td class="text-gray-400 py-4" colspan="8">No staff yet.</td></tr>'}</tbody>
       </table>
-    </div>
-    ${attendanceSubTabsHtml()}`;
+    </div>`;
 
   wireAttendanceSubTabs(el);
   document.getElementById('attViewDate').onchange = (e) => { attendanceDate = e.target.value; renderAttendance(el); };
@@ -1826,7 +1826,7 @@ async function renderAttendance(el) {
 }
 
 async function renderSetStatusDay(el) {
-  el.innerHTML = `<div id="attSub"><p class="text-gray-400 text-center mt-6">Loading…</p></div>${attendanceSubTabsHtml()}`;
+  el.innerHTML = `${attendanceSubTabsHtml()}<div id="attSub"><p class="text-gray-400 text-center mt-6">Loading…</p></div>`;
   wireAttendanceSubTabs(el);
   const sub = document.getElementById('attSub');
   const { data: staff, error: staffError } = await sb.from('staff').select('id, full_name, phone, sites(name)').eq('company_id', myProfile.company_id).order('full_name');
@@ -1902,7 +1902,7 @@ async function renderSetStatusDay(el) {
 }
 
 async function renderAttendanceByDate(el) {
-  el.innerHTML = `<div id="attSub"></div>${attendanceSubTabsHtml()}`;
+  el.innerHTML = `${attendanceSubTabsHtml()}<div id="attSub"></div>`;
   wireAttendanceSubTabs(el);
   const sub = document.getElementById('attSub');
   sub.innerHTML = `<div class="mt-card p-5 mt-fade-in">

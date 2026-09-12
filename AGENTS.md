@@ -72,7 +72,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Attendance Tab (`renderAttendance`)
 **Structure**
-- Attendance is a sub-tab workspace (`attendanceSubTab`), nav sits at the bottom of the card like Payroll.
+- Attendance is a sub-tab workspace (`attendanceSubTab`), nav sits at the top directly under the main header tabs; content renders below it.
 - Destinations: **Daily Attendance** (default), **Set Status for a Day**, **Location Checker** (`manage_staff` only), **Broadcast Notifications** (`broadcast_notifications` only), **Attendance for Updated Date**.
 - Deep links: `admin.html?tab=attendance&sub=setstatus|location|notify|bydate`.
 
