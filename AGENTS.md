@@ -71,14 +71,27 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `update_staff_profile` does not save → verify `030_staff_profiles.sql` is applied and reload PostgREST schema.
 
 ### Attendance Tab (`renderAttendance`)
-**What it does**
-- Shows trend chart and daily attendance table for `attendanceDate`.
-- `Set Status for a Day` form lets an admin manually set a staff member's status, check-in, and check-out times.
-- Bulk actions: select multiple staff and mark them all with one status.
-- Quick status buttons and manual check-out with reason.
-- **Location Checker** (if `manage_staff`) appears directly under `Set Status for a Day`.
-- **Broadcast Notifications** (if `broadcast_notifications`) appears under Location Checker.
-- Real-time subscription refreshes attendance every minute or on any `attendance` change for the selected date.
+**Structure**
+- Attendance is a sub-tab workspace (`attendanceSubTab`), nav sits at the bottom of the card like Payroll.
+- Destinations: **Daily Attendance** (default), **Set Status for a Day**, **Location Checker** (`manage_staff` only), **Broadcast Notifications** (`broadcast_notifications` only), **Attendance for Updated Date**.
+- Deep links: `admin.html?tab=attendance&sub=setstatus|location|notify|bydate`.
+
+**Daily Attendance**
+- Trend chart + per-status cards + daily table for `attendanceDate` (date input in the card header changes it).
+- Bulk actions, quick-status buttons, manual check-out with reason, CSV export.
+- Real-time subscription refreshes attendance every minute or on any `attendance` change.
+
+**Set Status for a Day**
+- Staff picker + date + status + optional check-in/out + optional reason → `set_attendance_status`.
+
+**Location Checker**
+- `admin_get_latest_locations(p_company_id)` renders the per-staff table (status, accuracy, distance, verified time); per-row **Request Location** → `admin_request_location_check`; **Request All** → `admin_request_location_for_all`.
+
+**Broadcast Notifications**
+- Recipient select (All staff → `p_staff_id` null) + title + message → `admin_send_notification`.
+
+**Attendance for Updated Date**
+- Date picker → `report_attendance_summary(p_company_id, date, date)` → per-day totals cards.
 
 **What can go wrong**
 - Attendance table not loading → check `admin_list_attendance` RPC and `attendance` RLS.
@@ -93,10 +106,9 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Location Checker (`renderLocationChecker`)
 **What it does**
-- Lists staff and their assigned site with geofence data.
-- `Request Location` asks a single staff to share GPS coordinates.
-- `Request All` sends mass location request.
-- Displays coordinates, accuracy, distance from site, capture time, and a Google Maps link.
+- Now an Attendance sub-tab (Attendance → Location Checker), gated by `manage_staff`.
+- `admin_get_latest_locations` renders every staff member's last known location: inside/outside geofence status, accuracy, distance from site, verified time.
+- Per-row **Request Location** → `admin_request_location_check`; **Request Location from All Staff** → `admin_request_location_for_all`.
 - Green = inside geofence, red = outside.
 
 **What can go wrong**
@@ -112,8 +124,9 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Broadcast Notifications (`renderNotificationsAdmin`)
 **What it does**
-- Sends a notification to one staff or all staff.
-- Stores via `admin_send_notification` RPC.
+- Now an Attendance sub-tab (Attendance → Broadcast Notifications), gated by `broadcast_notifications`.
+- Sends a notification to one staff or all staff (`p_staff_id` null for broadcast).
+- Stores via `admin_send_notification` RPC; shows recent broadcast history.
 
 **What can go wrong**
 - Send fails → `admin_send_notification` missing or RLS.

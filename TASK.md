@@ -203,21 +203,41 @@ Check items off as they're completed. This file is the actual answer to
 
 ## ⬜ Phase 1 — Foundation
 
-- [ ] **Administrator workspace**
-  - [ ] Backend: confirm/extend existing staff, sites, attendance, leave,
-        onboarding RPCs for dedicated workspace use
-  - [ ] Backend: role/permission wiring for Administrator workspace access
-  - [ ] Devin prompt written and sent
-  - [ ] Frontend built
-- [ ] **Finance & Payroll Manager workspace**
-  - [ ] Backend: extend payroll/payment/deduction RPCs with budgets
-  - [ ] Backend: tax compliance data model + RPCs
-  - [ ] Devin prompt written and sent
-  - [ ] Frontend built
-- [ ] **Executive Director workspace**
-  - [ ] Backend: reporting/analytics RPCs over Administrator + Finance data
-  - [ ] Backend: approvals routing (high-risk actions surfaced here)
-  - [ ] Devin prompt written and sent
+**Note**: the Attendance and Payroll menu work above (Set Status for a Day,
+Location Checker, Broadcast Notifications, Payroll History, Quick Pay,
+etc.) *is* Phase 1 in progress — Attendance = Administrator workspace core,
+Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
+
+- [~] **Administrator workspace** — in progress via Attendance menu buildout
+  - [x] Backend: staff/attendance RPCs confirmed secure and sufficient
+        (set_attendance_status, admin_get_latest_locations,
+        admin_request_location_check/for_all, admin_send_notification,
+        report_attendance_summary)
+  - [ ] Devin: Attendance tabs sent, not yet confirmed complete
+  - [x] Sites: confirmed already fully covered (`add_site`, `delete_site`)
+  - [x] **Leave: found and closed a real gap** — staff could submit a leave
+        request (`staff_request_leave`) but nothing let an admin act on it.
+        Built `admin_list_leave_requests(p_company_id, p_status)` and
+        `admin_review_leave_request(p_request_id, p_decision, p_reason)`
+        (approve/reject, logs to company_activity_log → visible in Registry,
+        same pattern as the invite audit trail)
+  - [ ] Onboarding piece still not touched
+  - [ ] Devin: Leave tab in Administrator workspace — prompt below
+- [~] **Finance & Payroll Manager workspace** — in progress via Payroll menu buildout
+  - [x] Backend: Quick Pay (final settlement) built; Payroll History backed
+        by existing report_payroll_summary; Flutterwave removed
+  - [ ] Devin: menu fixes sent, not yet confirmed complete
+  - [ ] Tax compliance, budgets not yet touched
+- [~] **Executive Director workspace** — backend started
+  - [x] `executive_dashboard_summary(p_company_id)` built — one combined
+        "at a glance" view (staff/attendance today, pending payroll,
+        next payroll period, pending payments, open Watchguard findings by
+        severity), since nothing previously combined these
+  - [x] Approvals and drill-down reuse existing functions rather than
+        duplicating logic: `watchguard_open_findings` (approvals),
+        `report_attendance_summary`/`report_payroll_summary`/
+        `report_staff_summary` (drill-down detail)
+  - [ ] Devin prompt sent — build below
   - [ ] Frontend built
 
 ## ⬜ Phase 2 — Operations
