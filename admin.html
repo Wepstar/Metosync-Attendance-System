@@ -140,7 +140,7 @@ async function init() {
       await loadProfile();
       const params = new URLSearchParams(location.search);
       if (params.get('tab')) activeTab = params.get('tab');
-      if (params.get('sub')) { payrollSubTab = params.get('sub'); attendanceSubTab = params.get('sub'); }
+      if (params.get('sub')) { payrollSubTab = params.get('sub'); attendanceSubTab = params.get('sub'); execSubTab = params.get('sub'); }
     }
   } catch (err) {
     console.error('Initialization error:', err);
@@ -225,6 +225,7 @@ function renderNoCompany() {
 function renderDashboard() {
     const plan = myCompany.service_plan || 'both';
   const tabs = [
+    ['owner', 'executive_director'].includes(myProfile.role) ? { id: 'executive', label: 'Executive' } : null,
     can('manage_staff') ? { id: 'staff', label: 'Staff' } : null,
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
@@ -265,6 +266,7 @@ async function renderTabContent() {
     btn.className = `tabBtn mt-tab ${btn.dataset.tab === activeTab ? 'active' : ''}`;
   });
 
+  if (activeTab === 'executive') return renderExecutive(el);
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'attendance') return renderAttendance(el);
@@ -1933,6 +1935,191 @@ async function renderAttendanceByDate(el) {
   document.getElementById('loadAttDayBtn').onclick = load;
   document.getElementById('attDayDate').onchange = load;
   load();
+}
+
+// ===== EXECUTIVE =====
+let execSubTab = 'overview';
+let execReportType = 'attendance';
+let execReportStart = '';
+let execReportEnd = '';
+
+function execSubTabsHtml() {
+  const tab = (id, label) => `<button type="button" class="mt-tab ${execSubTab === id ? 'active' : ''}" data-exec-tab="${id}">${label}</button>`;
+  return `<div class="payroll-subtabs flex flex-wrap gap-1 mt-card p-1">
+    ${tab('overview', 'Overview')}
+    ${tab('approvals', 'Approvals')}
+    ${tab('reports', 'Reports')}
+  </div>`;
+}
+
+function wireExecSubTabs(el) {
+  el.querySelectorAll('[data-exec-tab]').forEach(btn => {
+    btn.onclick = () => { execSubTab = btn.dataset.execTab; renderExecutive(el); };
+  });
+}
+
+async function renderExecutive(el) {
+  if (!['owner', 'executive_director'].includes(myProfile.role)) {
+    el.innerHTML = `<div class="mt-card p-6 text-center"><p class="text-gray-500">This area is for company directors only.</p></div>`;
+    return;
+  }
+  if (execSubTab === 'approvals') return renderExecApprovals(el);
+  if (execSubTab === 'reports') return renderExecReports(el);
+  execSubTab = 'overview';
+  return renderExecOverview(el);
+}
+
+function execMoney(value, currency = 'GHS') {
+  if (value == null) return '—';
+  return `${currency} ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+async function renderExecOverview(el) {
+  el.innerHTML = `${execSubTabsHtml()}<div id="execContent"><p class="text-gray-400 text-center mt-6">Loading…</p></div>`;
+  wireExecSubTabs(el);
+  const content = document.getElementById('execContent');
+
+  const { data, error } = await sb.rpc('executive_dashboard_summary', { p_company_id: myProfile.company_id });
+  if (error) { content.innerHTML = `<p class="text-red-600 text-sm mt-4">${escapeHtml(error.message)}</p>`; return; }
+  const d = Array.isArray(data) ? data[0] || {} : data || {};
+  const staff = d.staff || {};
+  const payroll = d.payroll || {};
+  const payments = d.payments || {};
+  const approvals = d.approvals_needed || d.approvals || {};
+  const nextStart = payroll.next_period_start ?? d.next_period_start;
+  const nextEnd = payroll.next_period_end ?? d.next_period_end;
+  const critical = Number(approvals.critical || 0);
+  const warning = Number(approvals.warning || 0);
+
+  const card = (big, small) => `<div class="mt-card p-4">
+      <p class="text-2xl font-bold" style="color: var(--mt-green-dark);">${big}</p>
+      <p class="text-xs text-gray-500 mt-1">${small}</p>
+    </div>`;
+
+  content.innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-fade-in">
+      ${card(`${staff.checked_in_today ?? 0} of ${staff.total_active ?? 0}`, 'staff checked in today')}
+      ${card(execMoney(payroll.pending_amount), 'still owed in payroll')}
+      ${card(nextStart ? `${nextStart} – ${nextEnd || '?'}` : '—', 'next payroll period')}
+      ${card(execMoney(payments.pending_amount), 'in payments waiting')}
+      <button type="button" id="execAttentionCard" class="mt-card p-4 text-left" style="cursor:pointer;">
+        <p class="text-2xl font-bold ${critical ? 'text-red-600' : warning ? 'text-amber-600' : 'text-green-700'}">${critical + warning}</p>
+        <p class="text-xs text-gray-500 mt-1">need${critical + warning === 1 ? 's' : ''} your attention${critical ? ` (${critical} urgent)` : ''} — tap to review</p>
+      </button>
+    </div>`;
+  document.getElementById('execAttentionCard').onclick = () => { execSubTab = 'approvals'; renderExecutive(el); };
+}
+
+async function renderExecApprovals(el) {
+  el.innerHTML = `${execSubTabsHtml()}<div id="execContent"><p class="text-gray-400 text-center mt-6">Loading…</p></div>`;
+  wireExecSubTabs(el);
+  const content = document.getElementById('execContent');
+
+  const { data, error } = await sb.rpc('watchguard_open_findings', { p_company_id: myProfile.company_id });
+  if (error) { content.innerHTML = `<p class="text-red-600 text-sm mt-4">${escapeHtml(error.message)}</p>`; return; }
+  const findings = Array.isArray(data) ? data : [];
+
+  const sevStyle = { critical: 'background:#FEE2E2;color:#B91C1C;', warning: 'background:#FEF3C7;color:#B45309;', info: 'background:#E0F2FE;color:#0369A1;' };
+  const humanize = s => String(s || '').replace(/_/g, ' ');
+
+  content.innerHTML = `<div class="mt-card p-5 mt-fade-in">
+    <h2 class="font-medium mb-1">Needs your approval</h2>
+    <p class="text-xs text-gray-500 mb-4">Watchguard spotted these and suggests a fix. Approve to apply it, or reject to dismiss.</p>
+    <div id="execFindingMsg"></div>
+    ${findings.length ? findings.map(f => `
+      <div class="border rounded-xl p-4 mb-3" data-finding="${f.id}">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-xs font-bold px-2 py-0.5 rounded-full" style="${sevStyle[f.severity] || sevStyle.info}">${escapeHtml(f.severity || 'info')}</span>
+          <span class="text-xs text-gray-400">${f.created_at ? new Date(f.created_at).toLocaleDateString() : ''}</span>
+        </div>
+        <p class="font-medium text-sm">${escapeHtml(humanize(f.rule_name))}</p>
+        <p class="text-sm text-gray-600 mb-1">${escapeHtml(f.description || '')}</p>
+        ${f.proposed_action ? `<p class="text-xs text-gray-500 mb-2">Suggested fix: ${escapeHtml(humanize(f.proposed_action))}</p>` : ''}
+        <input type="text" class="execReason w-full border rounded-lg px-3 py-2 text-sm mb-2" placeholder="Reason (optional)">
+        <div class="flex gap-2">
+          <button type="button" class="mt-btn-primary text-sm execApprove" data-id="${f.id}">Approve</button>
+          <button type="button" class="mt-btn-outline text-sm execReject" data-id="${f.id}">Reject</button>
+        </div>
+      </div>`).join('') : '<p class="text-gray-400 text-sm">Nothing needs your attention right now. 🎉</p>'}
+  </div>`;
+
+  const act = async (id, rpcName, btn) => {
+    const card = content.querySelector(`[data-finding="${id}"]`);
+    const reason = card ? card.querySelector('.execReason').value.trim() : '';
+    btn.disabled = true; btn.textContent = 'Working…';
+    const { error } = await sb.rpc(rpcName, { p_finding_id: id, p_user_id: myProfile.id, p_reason: reason || null });
+    const msg = document.getElementById('execFindingMsg');
+    if (error) {
+      btn.disabled = false; btn.textContent = rpcName.includes('approve') ? 'Approve' : 'Reject';
+      if (msg) msg.innerHTML = `<p class="text-red-600 text-sm mb-2">${escapeHtml(error.message)}</p>`;
+    } else {
+      renderExecApprovals(el);
+    }
+  };
+  content.querySelectorAll('.execApprove').forEach(b => b.onclick = () => act(b.dataset.id, 'watchguard_approve_action', b));
+  content.querySelectorAll('.execReject').forEach(b => b.onclick = () => act(b.dataset.id, 'watchguard_reject_action', b));
+}
+
+async function renderExecReports(el) {
+  el.innerHTML = `${execSubTabsHtml()}<div id="execContent"></div>`;
+  wireExecSubTabs(el);
+  const content = document.getElementById('execContent');
+
+  const today = new Date();
+  const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const defaultEnd = today.toISOString().slice(0, 10);
+  const start = execReportStart || defaultStart;
+  const end = execReportEnd || defaultEnd;
+
+  const typeTab = (id, label) => `<button type="button" class="mt-tab ${execReportType === id ? 'active' : ''}" data-exec-report="${id}">${label}</button>`;
+  content.innerHTML = `<div class="mt-card p-5 mt-fade-in">
+    <h2 class="font-medium mb-3">Reports</h2>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <input id="execRepStart" type="date" value="${start}" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="execRepEnd" type="date" value="${end}" class="border rounded-lg px-3 py-2 text-sm">
+      <button id="execRepLoad" type="button" class="mt-btn-primary text-sm">Show</button>
+    </div>
+    <div class="flex flex-wrap gap-1 mb-4">${typeTab('attendance', 'Attendance')}${typeTab('payroll', 'Payroll')}${typeTab('staff', 'Staff')}</div>
+    <div id="execRepResult"><p class="text-gray-400 text-sm">Loading…</p></div>
+  </div>`;
+
+  content.querySelectorAll('[data-exec-report]').forEach(b => b.onclick = () => { execReportType = b.dataset.execReport; renderExecReports(el); });
+  document.getElementById('execRepLoad').onclick = () => {
+    execReportStart = document.getElementById('execRepStart').value;
+    execReportEnd = document.getElementById('execRepEnd').value;
+    renderExecReports(el);
+  };
+
+  const result = document.getElementById('execRepResult');
+  if (execReportType === 'staff') {
+    const { data, error } = await sb.rpc('report_staff_summary', { p_company_id: myProfile.company_id });
+    if (error) { result.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+    const s = Array.isArray(data) ? data[0] || {} : data || {};
+    const stat = (label, value) => `<div class="bg-gray-50 rounded-lg p-3"><p class="text-xs text-gray-500">${label}</p><p class="font-bold">${value ?? 0}</p></div>`;
+    result.innerHTML = `<p class="text-xs text-gray-400 mb-2">Current snapshot — dates don't apply here.</p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        ${stat('Total staff', s.total_staff)}${stat('Active', s.active)}${stat('Inactive', s.inactive)}${stat('On leave', s.on_leave)}
+        ${stat('Permanent', s.permanent)}${stat('Casual', s.casual)}${stat('Devices pending', s.pending_devices)}
+      </div>`;
+    return;
+  }
+
+  const rpc = execReportType === 'payroll' ? 'report_payroll_summary' : 'report_attendance_summary';
+  const { data, error } = await sb.rpc(rpc, { p_company_id: myProfile.company_id, p_start: start, p_end: end });
+  if (error) { result.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+  const rows = Array.isArray(data) ? data : [];
+
+  if (execReportType === 'payroll') {
+    result.innerHTML = `<div class="overflow-x-auto"><table class="w-full mt-table text-sm">
+      <thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Paid</th><th>Pending</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${escapeHtml(r.period_name)}</td><td>${Number(r.gross_pay || 0).toFixed(2)}</td><td>${Number(r.total_deductions || 0).toFixed(2)}</td><td>${Number(r.net_pay || 0).toFixed(2)}</td><td>${Number(r.paid_amount || 0).toFixed(2)}</td><td>${Number(r.pending_amount || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td class="text-gray-400" colspan="6">No data for this range.</td></tr>'}</tbody>
+    </table></div>`;
+  } else {
+    result.innerHTML = `<div class="overflow-x-auto"><table class="w-full mt-table text-sm">
+      <thead><tr><th>Date</th><th>Present</th><th>Absent</th><th>Late</th><th>On Leave</th><th>Hours</th><th>Staff</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${r.work_date}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.late}</td><td>${r.on_leave}</td><td>${Number(r.total_hours || 0).toFixed(2)}</td><td>${r.staff_count}</td></tr>`).join('') || '<tr><td class="text-gray-400" colspan="7">No data for this range.</td></tr>'}</tbody>
+    </table></div>`;
+  }
 }
 
 // ===== SETTINGS =====

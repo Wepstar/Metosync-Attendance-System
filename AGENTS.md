@@ -132,6 +132,24 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Send fails → `admin_send_notification` missing or RLS.
 - Real-time notification not received → verify staff subscription in `staff.html`.
 
+### Executive Tab (`renderExecutive`)
+**Structure**
+- Top-level tab shown only to `owner` and `executive_director` roles; sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**.
+- Deep links: `admin.html?tab=executive&sub=overview|approvals|reports`.
+- All data comes from RPCs only — no direct table queries in this section.
+
+**Overview** — `executive_dashboard_summary(p_company_id)` → plain-language cards: staff checked in today (`staff.checked_in_today`/`staff.total_active`), payroll still owed (`payroll.pending_amount`), next payroll period (`payroll.next_period_start`/`next_period_end`), payments waiting (`payments.pending_amount`), and a tappable "Needs your attention" card (`approvals_needed.critical` + `.warning`) that jumps to Approvals.
+
+**Approvals** — `watchguard_open_findings(p_company_id)` → one card per finding (severity badge, rule name, description, suggested fix), optional reason input, Approve → `watchguard_approve_action(p_finding_id, p_user_id, p_reason)`, Reject → `watchguard_reject_action(...)`. `p_user_id` is `myProfile.id`; the server re-verifies identity from the session.
+
+**Reports** — date range + Attendance/Payroll/Staff selector → `report_attendance_summary` / `report_payroll_summary` (both take `p_start`/`p_end`) / `report_staff_summary` (snapshot, `p_company_id` only, no dates).
+
+**What can go wrong**
+- Tab missing → caller's `admin_users.role` isn't `owner`/`executive_director`. The `executive_director` portfolio exists but has no `role_permissions` rows, so `can()` returns false for it — the tab is gated on `myProfile.role`, not `can()`.
+- Overview error "function does not exist" → `executive_dashboard_summary` was built server-side only; confirm it's deployed and refresh the schema cache.
+- Approve/Reject returns "not found or not open" → another admin already resolved the finding; the list refreshes after each action.
+- Empty cards / `—` values → the RPC's JSON keys differ; the view reads `staff.*`, `payroll.*`, `payments.*`, `approvals_needed.*` (with top-level `next_period_*` fallback).
+
 ### Payments Tab (`renderPayments`)
 **What it does**
 - Lists unpaid payroll entries (`payroll_payables` RPC).
