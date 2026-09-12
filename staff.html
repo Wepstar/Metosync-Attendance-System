@@ -45,6 +45,13 @@
   .face-mouth { position: absolute; left: 42px; top: 78px; width: 52px; height: 28px; border: 5px solid #263238; border-top: 0; border-radius: 0 0 60px 60px; }
   @keyframes face-bounce { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-10px) rotate(2deg); } }
   .pin-dots { letter-spacing: 0.5rem; }
+  .pin-dots-row { display: flex; justify-content: center; gap: 14px; margin: 10px 0 20px; }
+  .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--brand, #0d2a4d); display: inline-block; transition: background .15s, transform .15s; }
+  .pin-dot.filled { background: var(--brand, #0d2a4d); transform: scale(1.1); }
+  .pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pin-key { background: #f1f5f9; border: 0; border-radius: 14px; padding: 15px 0; font-size: 1.35rem; font-weight: 600; color: var(--brand, #0d2a4d); cursor: pointer; transition: transform .08s, background .15s; font-family: inherit; }
+  .pin-key:active { transform: scale(.95); background: #e2e8f0; }
+  .pin-key:disabled { opacity: .35; cursor: default; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25); }
   .tab-active { color: var(--brand); background: var(--brand-light); border-bottom: 2px solid var(--brand-accent); }
   .alert-red { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
@@ -71,6 +78,7 @@ let gpsMessage = '';
 let dashboardTab = 'records';
 let pollTimer = null;
 let lockoutSeconds = 0;
+let pinValue = '';
 let isSuspended = false;
 let pendingSyncCount = 0;
 let isOnline = navigator.onLine;
@@ -257,18 +265,41 @@ function renderPin() {
   const lockoutWarning = lockoutSeconds > 0
     ? `<div class="mt-4 rounded-xl alert-red px-4 py-3 text-sm font-medium fade-in" role="alert"><strong>Too many incorrect PIN attempts.</strong><br>You are locked out for <span id="lockoutCountdown">${lockoutSeconds}</span> seconds. Please wait.</div>`
     : '';
-  const inputDisabled = lockoutSeconds > 0 ? 'disabled' : '';
+  const padDisabled = lockoutSeconds > 0 || busy;
+  const key = d => `<button type="button" class="pin-key" data-digit="${d}" ${padDisabled ? 'disabled' : ''}>${d}</button>`;
   app().innerHTML = `${header('Enter your PIN', 'Use the 4-digit PIN provided by your administrator.')}
-    <section class="card-modern p-6"><label for="pinInput" class="block text-sm font-semibold text-gray-700 mb-2">4-digit PIN</label>
-    <input id="pinInput" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" class="w-full input-modern rounded-xl px-4 py-3 text-2xl tracking-[0.6em] text-center" placeholder="••••" ${inputDisabled}>
-    <button id="verifyBtn" type="button" class="btn-primary w-full mt-4" ${lockoutSeconds > 0 ? 'disabled' : ''}>${loadingLabel('Verify PIN')}</button><button id="backBtn" type="button" class="w-full mt-4 link-muted text-sm font-medium py-2">Use a different number</button>${lockoutWarning}${errorHtml()}</section>`;
-  const input = document.getElementById('pinInput'); if (!lockoutSeconds) input.focus();
-  input.oninput = () => { input.value = input.value.replace(/\D/g, '').slice(0, 4); };
-  input.onkeydown = event => { if (event.key === 'Enter' && !lockoutSeconds) verifyPin(); };
-  document.getElementById('verifyBtn').onclick = verifyPin;
-  document.getElementById('backBtn').onclick = () => { screen = 'phone'; errorMessage = ''; lockoutSeconds = 0; render(); };
+    <section class="card-modern p-6"><p class="text-center text-sm font-semibold text-gray-700 mb-1">4-digit PIN</p>
+    <div class="pin-dots-row" id="pinDots">${[0, 1, 2, 3].map(i => `<span class="pin-dot ${i < pinValue.length ? 'filled' : ''}"></span>`).join('')}</div>
+    <div class="pin-pad">
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(key).join('')}
+      <span></span>
+      ${key(0)}
+      <button type="button" class="pin-key" id="pinBackspace" aria-label="Delete last digit" ${padDisabled ? 'disabled' : ''}>&#9003;</button>
+    </div>
+    ${busy ? '<p class="text-center text-sm text-gray-400 mt-3">Verifying…</p>' : ''}
+    <button id="backBtn" type="button" class="w-full mt-4 link-muted text-sm font-medium py-2">&larr; Back — use a different number</button>${lockoutWarning}${errorHtml()}</section>`;
+  app().querySelectorAll('[data-digit]').forEach(btn => btn.onclick = () => pressPinDigit(btn.dataset.digit));
+  document.getElementById('pinBackspace').onclick = () => { pinValue = pinValue.slice(0, -1); updatePinDots(); };
+  document.getElementById('backBtn').onclick = () => { pinValue = ''; screen = 'phone'; errorMessage = ''; lockoutSeconds = 0; render(); };
   if (lockoutSeconds > 0) startLockoutCountdown();
 }
+
+function updatePinDots() {
+  app().querySelectorAll('#pinDots .pin-dot').forEach((d, i) => d.classList.toggle('filled', i < pinValue.length));
+}
+
+function pressPinDigit(digit) {
+  if (busy || lockoutSeconds > 0 || isSuspended || pinValue.length >= 4) return;
+  pinValue += digit;
+  updatePinDots();
+  if (pinValue.length === 4) verifyPin();
+}
+
+document.addEventListener('keydown', event => {
+  if (screen !== 'pin' || busy || lockoutSeconds > 0) return;
+  if (/^\d$/.test(event.key)) pressPinDigit(event.key);
+  else if (event.key === 'Backspace') { pinValue = pinValue.slice(0, -1); updatePinDots(); }
+});
 
 function startLockoutCountdown() {
   const el = document.getElementById('lockoutCountdown');
@@ -303,7 +334,7 @@ function renderDevice() {
 }
 async function verifyPin() {
   if (busy || lockoutSeconds > 0 || isSuspended) return;
-  const pin = document.getElementById('pinInput').value;
+  const pin = pinValue;
   if (!/^\d{4}$/.test(pin)) return setError('Enter all 4 digits of your PIN.');
   busy = true; errorMessage = ''; render();
   try {
@@ -317,7 +348,7 @@ async function verifyPin() {
       isSuspended = true; busy = false; screen = 'suspended'; render(); return;
     }
     if (result.lockout_seconds && result.lockout_seconds > 0) {
-      lockoutSeconds = result.lockout_seconds; busy = false; screen = 'pin'; render(); return;
+      lockoutSeconds = result.lockout_seconds; pinValue = ''; busy = false; screen = 'pin'; render(); return;
     }
 
     sessionToken = result.session_token; localStorage.setItem(STORAGE_KEY, sessionToken);
@@ -335,6 +366,7 @@ async function verifyPin() {
     if (deviceStatus === 'unrecognized') { screen = 'device'; render(); return; }
     screen = openAttendance ? 'checkout' : 'checkin'; render();
   } catch (error) {
+    pinValue = '';
     if (/lockout/i.test(error.message)) {
       lockoutSeconds = 180; busy = false; screen = 'pin'; render(); return;
     }
@@ -618,7 +650,7 @@ async function renderNotifications(content) {
   });
 }
 
-function clearSession(message) { localStorage.removeItem(STORAGE_KEY); sessionToken = ''; staff = null; openAttendance = null; screen = companyCode ? 'phone' : 'invalid-link'; errorMessage = message || ''; render(); }
+function clearSession(message) { localStorage.removeItem(STORAGE_KEY); sessionToken = ''; staff = null; openAttendance = null; pinValue = ''; screen = companyCode ? 'phone' : 'invalid-link'; errorMessage = message || ''; render(); }
 async function restoreSession() {
   if (!sessionToken) return render();
   try { await loadDashboardData(); screen = openAttendance ? 'checkout' : 'checkin'; render(); } catch (error) { clearSession('Please sign in again.'); }
