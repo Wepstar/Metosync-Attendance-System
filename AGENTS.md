@@ -132,6 +132,18 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Send fails → `admin_send_notification` missing or RLS.
 - Real-time notification not received → verify staff subscription in `staff.html`.
 
+### Leave Tab (`renderLeave`)
+**What it does**
+- Top-level tab gated by `manage_staff`, sitting between Sites and Attendance.
+- `admin_list_leave_requests(p_company_id, p_status)` lists requests; filter chips: **Waiting** (default, `p_status='pending'`), **All** (`p_status=null`), **Approved**, **Rejected**.
+- Each card reads in plain language: "Name — N days, Mar 4–6 — reason". Days/dates are computed defensively (`days`/`num_days`, or derived from `start_date`/`end_date`).
+- Pending cards show an optional note field plus **Approve**/**Reject** → `admin_review_leave_request(p_request_id, p_decision, p_reason)` with `p_decision` = `'approved'`/`'rejected'`; list reloads after each action.
+
+**What can go wrong**
+- "function does not exist" → the two leave RPCs were built server-side only; deploy + `SELECT pg_notify('pgrst', 'reload schema');`.
+- "not found / already reviewed" → another admin already actioned it; list refreshes anyway.
+- Empty staff names → RPC row field may differ (`staff_name`/`full_name`/`name` all checked).
+
 ### Executive Tab (`renderExecutive`)
 **Structure**
 - Top-level tab shown only to `owner` and `executive_director` roles; sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**.

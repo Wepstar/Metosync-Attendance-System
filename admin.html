@@ -228,6 +228,7 @@ function renderDashboard() {
     ['owner', 'executive_director'].includes(myProfile.role) ? { id: 'executive', label: 'Executive' } : null,
     can('manage_staff') ? { id: 'staff', label: 'Staff' } : null,
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
+    can('manage_staff') ? { id: 'leave', label: 'Leave' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
@@ -267,6 +268,7 @@ async function renderTabContent() {
   });
 
   if (activeTab === 'executive') return renderExecutive(el);
+  if (activeTab === 'leave') return renderLeave(el);
   if (activeTab === 'sites') return renderSites(el);
   if (activeTab === 'staff') return renderStaff(el);
   if (activeTab === 'attendance') return renderAttendance(el);
@@ -1935,6 +1937,85 @@ async function renderAttendanceByDate(el) {
   document.getElementById('loadAttDayBtn').onclick = load;
   document.getElementById('attDayDate').onchange = load;
   load();
+}
+
+// ===== LEAVE =====
+let leaveFilter = 'pending';
+
+function leaveDays(r) {
+  if (r.days != null) return r.days;
+  if (r.num_days != null) return r.num_days;
+  if (r.start_date && r.end_date) {
+    const ms = new Date(`${r.end_date}T00:00:00`) - new Date(`${r.start_date}T00:00:00`);
+    if (!isNaN(ms)) return Math.round(ms / 86400000) + 1;
+  }
+  return null;
+}
+
+function leaveDateRange(r) {
+  const fmt = d => new Date(`${d}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (r.start_date && r.end_date) return `${fmt(r.start_date)} – ${fmt(r.end_date)}`;
+  return r.start_date || r.end_date || '';
+}
+
+async function renderLeave(el) {
+  const filterBtn = (id, label) => `<button type="button" class="mt-tab ${leaveFilter === id ? 'active' : ''}" data-leave-filter="${id}">${label}</button>`;
+  el.innerHTML = `<div class="mt-card p-5 mt-fade-in">
+    <h2 class="font-medium mb-1">Leave requests</h2>
+    <p class="text-xs text-gray-500 mb-4">Approve or reject time-off requests from your staff.</p>
+    <div class="payroll-subtabs flex flex-wrap gap-1 mb-4" style="margin-top:0;">
+      ${filterBtn('pending', 'Waiting')}${filterBtn('all', 'All')}${filterBtn('approved', 'Approved')}${filterBtn('rejected', 'Rejected')}
+    </div>
+    <div id="leaveMsg"></div>
+    <div id="leaveList"><p class="text-gray-400 text-sm">Loading…</p></div>
+  </div>`;
+
+  el.querySelectorAll('[data-leave-filter]').forEach(b => b.onclick = () => { leaveFilter = b.dataset.leaveFilter; renderLeave(el); });
+
+  const list = document.getElementById('leaveList');
+  const { data, error } = await sb.rpc('admin_list_leave_requests', {
+    p_company_id: myProfile.company_id,
+    p_status: leaveFilter === 'all' ? null : leaveFilter
+  });
+  if (error) { list.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+  const rows = Array.isArray(data) ? data : [];
+
+  const sevStyle = { pending: 'background:#FEF3C7;color:#B45309;', approved: 'background:#DCFCE7;color:#15803D;', rejected: 'background:#FEE2E2;color:#B91C1C;' };
+  list.innerHTML = rows.length ? rows.map(r => {
+    const name = r.staff_name || r.full_name || r.name || 'Staff member';
+    const days = leaveDays(r);
+    const dates = leaveDateRange(r);
+    const summary = [days != null ? `${days} day${days === 1 ? '' : 's'}` : null, dates || null].filter(Boolean).join(', ');
+    return `<div class="border rounded-xl p-4 mb-3" data-leave="${r.id}">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <p class="font-medium text-sm">${escapeHtml(name)}</p>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full" style="${sevStyle[r.status] || sevStyle.pending}">${escapeHtml(r.status || 'pending')}</span>
+      </div>
+      <p class="text-sm text-gray-600">${escapeHtml(summary)}${r.reason ? ` — ${escapeHtml(r.reason)}` : ''}</p>
+      ${(!r.status || r.status === 'pending') ? `
+        <input type="text" class="leaveReason w-full border rounded-lg px-3 py-2 text-sm mt-2 mb-2" placeholder="Note (optional — e.g. why rejected)">
+        <div class="flex gap-2">
+          <button type="button" class="mt-btn-primary text-sm leaveApprove" data-id="${r.id}">Approve</button>
+          <button type="button" class="mt-btn-outline text-sm leaveReject" data-id="${r.id}">Reject</button>
+        </div>` : ''}
+    </div>`;
+  }).join('') : `<p class="text-gray-400 text-sm">${leaveFilter === 'pending' ? 'No requests waiting — all caught up. 🎉' : 'No leave requests found.'}</p>`;
+
+  const review = async (id, decision, btn) => {
+    const card = list.querySelector(`[data-leave="${id}"]`);
+    const reason = card ? card.querySelector('.leaveReason').value.trim() : '';
+    btn.disabled = true; btn.textContent = 'Working…';
+    const { error } = await sb.rpc('admin_review_leave_request', { p_request_id: id, p_decision: decision, p_reason: reason || null });
+    if (error) {
+      btn.disabled = false; btn.textContent = decision === 'approved' ? 'Approve' : 'Reject';
+      const msg = document.getElementById('leaveMsg');
+      if (msg) msg.innerHTML = `<p class="text-red-600 text-sm mb-2">${escapeHtml(error.message)}</p>`;
+    } else {
+      renderLeave(el);
+    }
+  };
+  list.querySelectorAll('.leaveApprove').forEach(b => b.onclick = () => review(b.dataset.id, 'approved', b));
+  list.querySelectorAll('.leaveReject').forEach(b => b.onclick = () => review(b.dataset.id, 'rejected', b));
 }
 
 // ===== EXECUTIVE =====
