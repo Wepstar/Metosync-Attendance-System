@@ -209,7 +209,6 @@ function renderDashboard() {
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
-    plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll-history', label: 'Payroll History' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
     can('view_reports') ? { id: 'reports', label: 'Reports' } : null,
     can('manage_admins') ? { id: 'invite', label: 'Invite Team' } : null,
@@ -473,6 +472,9 @@ function payrollSubTabsHtml() {
     <a href="payroll.html" class="mt-tab">General Payroll</a>
     <a href="taxes.html" class="mt-tab">Taxes &amp; Incentives</a>
     <a href="review.html" class="mt-tab">Final Review</a>
+    <span class="border-l border-gray-200 mx-1"></span>
+    <button type="button" class="mt-tab ${payrollSubTab === 'history' ? 'active' : ''}" data-payroll-tab="history">📋 Payroll History</button>
+    <button type="button" class="mt-tab ${payrollSubTab === 'quitpay' ? 'active' : ''}" data-payroll-tab="quitpay">🚪 Quit Pay</button>
   </div>`;
 }
 
@@ -492,10 +494,150 @@ async function loadPayrollContext() {
 async function renderPayroll(el) {
   el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll…</p>`;
   try { payrollState = { ...payrollState, ...await loadPayrollContext(), previews: new Map() }; } catch (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
-  payrollSubTab = 'quickpay';
-  el.innerHTML = `${payrollSubTabsHtml()}${payrollQuickPayHtml()}`;
+
+  let content = '';
+  if (payrollSubTab === 'history') content = payrollHistoryHtml();
+  else if (payrollSubTab === 'quitpay') content = quitPayHtml();
+  else { payrollSubTab = 'quickpay'; content = payrollQuickPayHtml(); }
+  el.innerHTML = `${payrollSubTabsHtml()}${content}`;
   wirePayrollSubTabs(el);
-  wireQuickPay(el);
+  if (payrollSubTab === 'quickpay') wireQuickPay(el);
+  if (payrollSubTab === 'history') wirePayrollHistory(el);
+  if (payrollSubTab === 'quitpay') wireQuitPay(el);
+}
+
+function payrollHistoryHtml() {
+  const today = new Date();
+  return `<div class="mt-card p-5">
+    <h2 class="font-medium mb-3">Payroll History</h2>
+    <div class="flex flex-wrap gap-2 mb-4">
+      <input id="historyStart" type="date" value="${today.getFullYear()}-01-01" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="historyEnd" type="date" value="${today.toISOString().split('T')[0]}" class="border rounded-lg px-3 py-2 text-sm">
+      <button id="loadHistoryBtn" type="button" class="mt-btn-primary text-sm">Load</button>
+    </div>
+    <p id="historyMsg" class="text-sm mb-2"></p>
+    <div class="overflow-x-auto"><table class="w-full mt-table text-sm"><thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Paid</th><th>Pending</th></tr></thead><tbody id="historyBody"><tr><td colspan="6" class="text-gray-400">Pick a range and load.</td></tr></tbody></table></div>
+  </div>`;
+}
+
+async function loadPayrollHistory(el) {
+  const msg = document.getElementById('historyMsg');
+  const body = document.getElementById('historyBody');
+  const start = document.getElementById('historyStart').value;
+  const end = document.getElementById('historyEnd').value;
+  if (!start || !end) { msg.className = 'text-sm mb-2 text-red-600'; msg.textContent = 'Choose a start and end date.'; return; }
+  msg.textContent = '';
+  body.innerHTML = '<tr><td colspan="6" class="text-gray-400">Loading…</td></tr>';
+  const { data, error } = await sb.rpc('report_payroll_summary', { p_company_id: myProfile.company_id, p_start: start, p_end: end });
+  if (error) { body.innerHTML = `<tr><td colspan="6" class="text-red-600">${escapeHtml(error.message)}</td></tr>`; return; }
+  const rows = Array.isArray(data) ? data : [];
+  body.innerHTML = rows.map(r => `<tr><td>${escapeHtml(r.period_name)}</td><td>${Number(r.gross_pay || 0).toFixed(2)}</td><td>${Number(r.total_deductions || 0).toFixed(2)}</td><td>${Number(r.net_pay || 0).toFixed(2)}</td><td>${Number(r.paid_amount || 0).toFixed(2)}</td><td>${Number(r.pending_amount || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="6" class="text-gray-400">No payroll periods in this range.</td></tr>';
+}
+
+function wirePayrollHistory(el) {
+  document.getElementById('loadHistoryBtn').onclick = () => loadPayrollHistory(el);
+  loadPayrollHistory(el);
+}
+
+function quitPayHtml() {
+  const staffOptions = payrollState.staff.filter(s => s.status !== 'inactive').map(s => `<option value="${s.id}">${escapeHtml(s.full_name)} — ${s.phone || 'no phone'}</option>`).join('');
+  return `<div class="mt-card p-5">
+    <h2 class="font-medium mb-1">Quit Pay — Final Settlement</h2>
+    <p class="text-xs text-gray-500 mb-4">Preview a leaving staff member's settlement, then process it. The staff member is marked inactive automatically.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+      <select id="quitStaff" class="border rounded-lg px-3 py-2 text-sm">${staffOptions || '<option value="">No staff</option>'}</select>
+      <input id="quitLastDate" type="date" class="border rounded-lg px-3 py-2 text-sm">
+      <select id="quitProvider" class="border rounded-lg px-3 py-2 text-sm"><option value="paystack">Paystack</option><option value="flutterwave">Flutterwave</option></select>
+    </div>
+    <button id="quitPreviewBtn" type="button" class="mt-btn-outline text-sm">Preview Settlement</button>
+    <div id="quitPreviewArea" class="mt-4"></div>
+  </div>`;
+}
+
+function quitPreviewHtml(p) {
+  const cur = p.currency || 'GHS';
+  const dedRows = (p.deductions || []).map(d => `<tr><td>${escapeHtml(d.name)}</td><td class="text-xs text-gray-500">${escapeHtml(d.category || '')}</td><td>${d.amount == null ? '<span class="text-amber-600 text-xs">unset</span>' : Number(d.amount).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-gray-400">No active deductions.</td></tr>';
+  return `
+    <div class="border rounded-xl p-4 mb-4" style="border-color: var(--mt-border);">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <div class="bg-gray-50 rounded-lg p-3"><p class="text-xs text-gray-500">Final salary (${p.days_worked_in_final_month}/${p.days_in_final_month} days)</p><p class="font-bold">${cur} ${Number(p.final_salary || 0).toFixed(2)}</p></div>
+        <div class="bg-gray-50 rounded-lg p-3"><p class="text-xs text-gray-500">Leave entitled / taken</p><p class="font-bold">${p.leave_entitled_days} / ${p.leave_taken_days} days</p></div>
+        <div class="bg-gray-50 rounded-lg p-3"><p class="text-xs text-gray-500">Unused leave</p><p class="font-bold">${p.leave_unused_days} days</p></div>
+        <div class="bg-gray-50 rounded-lg p-3"><p class="text-xs text-gray-500">Leave payout</p><p class="font-bold">${cur} ${Number(p.leave_payout || 0).toFixed(2)}</p></div>
+      </div>
+      <table class="w-full mt-table text-sm"><thead><tr><th>Deduction</th><th>Category</th><th>Amount</th></tr></thead><tbody>${dedRows}</tbody></table>
+    </div>
+    <div class="border rounded-xl p-4" style="border-color: var(--mt-border);">
+      <p class="font-medium text-sm mb-2">Settlement mode</p>
+      <div class="flex gap-4 mb-3 text-sm">
+        <label><input type="radio" name="quitMode" value="direct" checked> Direct payment (one amount)</label>
+        <label><input type="radio" name="quitMode" value="itemized"> Itemized</label>
+      </div>
+      <div id="quitDirectBox" class="mb-3">
+        <label class="text-xs text-gray-500">Settlement amount (${cur})</label>
+        <input id="quitDirectAmount" type="number" step="0.01" min="0" value="${(Number(p.final_salary || 0) + Number(p.leave_payout || 0)).toFixed(2)}" class="block w-full border rounded-lg px-3 py-2 text-sm mt-1">
+      </div>
+      <div id="quitItemizedBox" class="hidden mb-3">
+        <label class="block text-sm mb-1"><input type="checkbox" id="quitIncSalary" checked> Include final salary (${cur} ${Number(p.final_salary || 0).toFixed(2)})</label>
+        <label class="block text-sm mb-2"><input type="checkbox" id="quitIncLeave" checked> Include leave payout (${cur} ${Number(p.leave_payout || 0).toFixed(2)})</label>
+        <label class="text-xs text-gray-500">Deductions amount (${cur}) — editable; some items may be unset</label>
+        <input id="quitDeductAmt" type="number" step="0.01" min="0" value="${Number(p.deductions_total || 0).toFixed(2)}" class="block w-full border rounded-lg px-3 py-2 text-sm mt-1">
+      </div>
+      <input id="quitNotes" placeholder="Notes (optional)" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+      <p id="quitMsg" class="text-sm mb-2"></p>
+      <button id="quitConfirmBtn" type="button" class="mt-btn-primary text-sm">Process Settlement</button>
+      <div id="quitResult" class="mt-3"></div>
+    </div>`;
+}
+
+function wireQuitPay(el) {
+  document.getElementById('quitPreviewBtn').onclick = async () => {
+    const area = document.getElementById('quitPreviewArea');
+    const staffId = document.getElementById('quitStaff').value;
+    const lastDate = document.getElementById('quitLastDate').value;
+    if (!staffId || !lastDate) { area.innerHTML = '<p class="text-red-600 text-sm">Choose a staff member and last working date.</p>'; return; }
+    area.innerHTML = '<p class="text-gray-400 text-sm">Loading preview…</p>';
+    const { data, error } = await sb.rpc('staff_quit_settlement_preview', { p_staff_id: staffId, p_last_working_date: lastDate });
+    if (error) { area.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+    area.innerHTML = quitPreviewHtml(data);
+    wireQuitConfirm(el, data, staffId, lastDate);
+  };
+}
+
+function wireQuitConfirm(el, preview, staffId, lastDate) {
+  document.querySelectorAll('input[name="quitMode"]').forEach(r => r.onchange = () => {
+    const direct = document.querySelector('input[name="quitMode"]:checked').value === 'direct';
+    document.getElementById('quitDirectBox').classList.toggle('hidden', !direct);
+    document.getElementById('quitItemizedBox').classList.toggle('hidden', direct);
+  });
+  document.getElementById('quitConfirmBtn').onclick = async () => {
+    const mode = document.querySelector('input[name="quitMode"]:checked').value;
+    const msg = document.getElementById('quitMsg');
+    const result = document.getElementById('quitResult');
+    msg.textContent = '';
+    const btn = document.getElementById('quitConfirmBtn');
+    btn.disabled = true; btn.textContent = 'Processing…';
+    const { data, error } = await sb.rpc('staff_process_quit_settlement', {
+      p_staff_id: staffId,
+      p_last_working_date: lastDate,
+      p_mode: mode,
+      p_direct_amount: mode === 'direct' ? Number(document.getElementById('quitDirectAmount').value || 0) : null,
+      p_include_final_salary: mode === 'itemized' ? document.getElementById('quitIncSalary').checked : null,
+      p_include_leave_payout: mode === 'itemized' ? document.getElementById('quitIncLeave').checked : null,
+      p_deduction_amount: mode === 'itemized' ? Number(document.getElementById('quitDeductAmt').value || 0) : null,
+      p_currency: preview.currency || 'GHS',
+      p_provider: document.getElementById('quitProvider').value,
+      p_notes: document.getElementById('quitNotes').value.trim() || null
+    });
+    btn.disabled = false; btn.textContent = 'Process Settlement';
+    if (error) { msg.className = 'text-sm mb-2 text-red-600'; msg.textContent = error.message; return; }
+    result.innerHTML = `<div class="border rounded-xl p-4" style="border-color: var(--mt-border); background: var(--mt-green-light);">
+      <p class="font-semibold text-sm mb-1" style="color: var(--mt-green-dark);">Settlement processed</p>
+      <p class="text-sm">Reference: <span class="font-mono font-bold">${escapeHtml(data.reference || '')}</span></p>
+      <p class="text-sm">Amount: ${escapeHtml(data.currency || '')} ${Number(data.amount || 0).toFixed(2)} · Status: ${escapeHtml(data.status || '')}</p>
+      <p class="text-xs text-gray-500 mt-1">The staff member has been marked inactive.</p>
+    </div>`;
+  };
 }
 
 function wirePayrollSubTabs(el) {
