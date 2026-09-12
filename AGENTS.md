@@ -154,7 +154,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 ### Invite Team Tab (`admin.html` → Invite Team)
 **What it does**
 - Owner-only tab (requires `manage_admins` permission).
-- Collects an email and a role; the icon-tile grid is built from `list_active_portfolios()` (nothing is hardcoded in the UI).
+- Collects an email and a role; the infographic-style role-card grid is built from `list_active_portfolios()` (nothing is hardcoded in the UI). Card color/icon come from `INVITE_ROLE_COLORS`/`INVITE_ROLE_ICONS` maps keyed by portfolio `code`, with hashed fallback color + initial letter for unknown codes.
 - Calls `admin_create_invite(p_company_id, p_email, p_role, p_created_by)` — returns an 8-char code valid for 7 days, shown with a Copy button.
 - `p_created_by` is `myProfile.id`; the server independently verifies `manage_admins` permission or `owner` role.
 - `p_role` is the portfolio `code`; for an invite to be accepted the code must satisfy the `admin_users.role` CHECK (`owner, admin, manager, payroll_officer, viewer`).

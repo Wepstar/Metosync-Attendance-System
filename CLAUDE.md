@@ -11,6 +11,41 @@ static HTML/JS frontend) expanding into a full "Workspace Suite" — see
 `PRD.md` for product vision and `PLANNING.md` for architecture. This file is
 about *how* to build it correctly, not *what* to build.
 
+## Design principles — built for first-time users, not power users
+
+The target user is often intimidated by cumbersome, technical-looking
+systems — many will be trying something like this for the first time. The
+reaction we're building for is "this is easy, we love it," never "this
+looks like too much work to learn." This applies to every workspace, not
+just some of them, and every Devin prompt should carry these forward:
+
+- **Plain, everyday language everywhere** — button labels, error messages,
+  empty states. No jargon, no technical error codes shown to the user.
+- **One task per screen.** Prefer several simple screens over one screen
+  trying to do everything. Hide advanced/rarely-used options until asked
+  for (progressive disclosure) rather than showing every field at once.
+- **Borrow familiar patterns** from apps people already use daily in this
+  region — WhatsApp, mobile money apps (MTN MoMo etc.). If a flow can look
+  and feel like something the user has already learned elsewhere, it should.
+- **Icons paired with text labels**, never icon-only — an unfamiliar icon
+  with no label is exactly the kind of small friction that makes a system
+  feel intimidating.
+- **Mobile-first, generous touch targets.** Assume the primary device is a
+  phone, not a desktop.
+- **Clear, human feedback**: "Saved!" not "Operation completed
+  successfully." Confirm what happened in words a non-technical person
+  would say themselves.
+- **Local context by default**: GHS currency formatting, local date format,
+  familiar terms for roles/positions.
+- **Consistent navigation across every workspace** — a pattern learned once
+  in Attendance should work the same way in Payroll, Stores & Inventory,
+  and everything after. This is a corollary of the architecture hooks in
+  `PLANNING.md` — the shared hooks are technical; this is the same idea
+  applied to what the user sees and learns.
+
+When writing a Devin prompt, translate "build X" into "build X the way
+someone who's never used a system like this before would find obvious."
+
 ## Non-negotiable security rules
 
 These exist because a September 2026 audit found and fixed **51 functions**

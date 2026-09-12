@@ -23,6 +23,23 @@
   .payroll-content .mt-icon-btn.edit { background: #dbeafe; color: #1e40af; }
   .payroll-subtabs { margin-top: 1rem; }
   .payroll-subtabs .mt-tab.active { background: #0d2a4d; color: white; }
+
+  .role-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 640px) { .role-grid { grid-template-columns: repeat(2, 1fr); } }
+  .role-card { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; background: #fff; border: 1px solid var(--mt-border); border-left: 4px solid var(--rc, #0d2a4d); border-radius: 14px; padding: 14px 16px; cursor: pointer; text-align: left; box-shadow: 0 1px 3px rgba(13,42,77,.07); transition: transform .18s ease, box-shadow .18s ease, background .18s ease; animation: roleCardIn .35s ease both; }
+  .role-card:hover { transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 24px rgba(13,42,77,.14); }
+  .role-card.selected { background: var(--rc-bg, #f4f7f5); border-color: var(--rc, #0d2a4d); animation: selectPulse .35s ease; }
+  .role-icon { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 21px; flex-shrink: 0; background: var(--rc-bg, #e6eef7); color: var(--rc, #0d2a4d); font-weight: 800; }
+  .role-info { flex: 1; min-width: 0; }
+  .role-name { font-weight: 700; font-size: 14px; color: #0d2a4d; }
+  .role-description { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.4; }
+  .role-step { font-weight: 800; font-size: 20px; color: var(--rc, #0d2a4d); font-variant-numeric: tabular-nums; }
+  .role-check { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; background: var(--rc, #0d2a4d); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; opacity: 0; transform: scale(.5); transition: all .2s ease; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+  .role-card.selected .role-check { opacity: 1; transform: scale(1); }
+  @keyframes roleCardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes selectPulse { 0% { box-shadow: 0 0 0 0 rgba(13,42,77,.35); } 100% { box-shadow: 0 0 0 14px rgba(13,42,77,0); } }
+  .invite-code-box { animation: codeIn .45s ease-out; }
+  @keyframes codeIn { from { opacity: 0; transform: scale(.96); box-shadow: 0 0 0 0 rgba(13,42,77,.3); } to { opacity: 1; transform: scale(1); box-shadow: 0 0 24px rgba(13,42,77,.15); } }
 </style>
 </head>
 <body class="min-h-screen" style="background: var(--mt-bg);">
@@ -2033,13 +2050,49 @@ async function renderReports(el) {
 
 let inviteRole = null;
 
-function inviteRoleTileHtml(portfolio, active) {
-  const activeCls = 'border-[#0d2a4d] ring-2 ring-[#0d2a4d]/20 bg-[#0d2a4d]/5';
-  const idleCls = 'border-gray-200 hover:border-gray-300';
-  return `<button type="button" class="inviteRoleTile text-left border rounded-xl p-4 transition ${active ? activeCls : idleCls}" data-role="${escapeHtml(portfolio.code)}">
-    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold mb-2" style="background: var(--mt-navy);">${escapeHtml((portfolio.display_name || portfolio.code || '?').charAt(0).toUpperCase())}</div>
-    <div class="font-semibold text-sm" style="color: var(--mt-navy);">${escapeHtml(portfolio.display_name)}</div>
-    <div class="text-xs text-gray-500 mt-1">${escapeHtml(portfolio.description || '')}</div>
+// Style map keyed by portfolio code. Unknown/new roles get a hashed fallback
+// color and an initial-letter icon, so the grid stays fully data-driven.
+const INVITE_ROLE_COLORS = {
+  owner: '#DC2626', executive_director: '#7C3AED', administrator: '#0284C7', admin: '#0284C7',
+  manager: '#0D9488', payroll_officer: '#059669', viewer: '#6B7280', stores_inventory: '#D97706',
+  operations_manager: '#4F46E5', sales_marketing: '#DB2777', customer_service: '#0891B2',
+  procurement: '#EA580C', compliance_legal: '#475569', training_development: '#8B5CF6',
+  security_access: '#F97316', board_governance: '#1E3A8A', audit_internal_control: '#166534',
+  strategy_planning: '#C026D3'
+};
+const INVITE_ROLE_FALLBACK_COLORS = ['#0d2a4d', '#0D9488', '#4F46E5', '#DB2777', '#D97706', '#0891B2', '#059669', '#7C3AED'];
+const INVITE_ROLE_ICONS = {
+  owner: '👑', executive_director: '🎯', administrator: '🛠️', admin: '🛠️', manager: '📋',
+  payroll_officer: '💰', viewer: '👁️', stores_inventory: '📦', operations_manager: '⚙️',
+  sales_marketing: '📈', customer_service: '💬', procurement: '🛒', compliance_legal: '⚖️',
+  training_development: '🎓', security_access: '🔐', board_governance: '🏛️',
+  audit_internal_control: '🔍', strategy_planning: '🧭'
+};
+
+function inviteRoleColor(code) {
+  if (INVITE_ROLE_COLORS[code]) return INVITE_ROLE_COLORS[code];
+  let h = 0;
+  for (const ch of String(code || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return INVITE_ROLE_FALLBACK_COLORS[h % INVITE_ROLE_FALLBACK_COLORS.length];
+}
+
+function inviteRoleTint(hex) {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, .12)`;
+}
+
+function inviteRoleTileHtml(portfolio, index, active) {
+  const color = inviteRoleColor(portfolio.code);
+  const icon = INVITE_ROLE_ICONS[portfolio.code] || escapeHtml((portfolio.display_name || portfolio.code || '?').charAt(0).toUpperCase());
+  return `<button type="button" class="role-card ${active ? 'selected' : ''}" data-role="${escapeHtml(portfolio.code)}"
+    style="--rc:${color};--rc-bg:${inviteRoleTint(color)};animation-delay:${index * 50}ms">
+    <span class="role-check">✓</span>
+    <div class="role-icon">${icon}</div>
+    <div class="role-info">
+      <h3 class="role-name">${escapeHtml(portfolio.display_name)}</h3>
+      <p class="role-description">${escapeHtml(portfolio.description || '')}</p>
+    </div>
+    <div class="role-step">${String(index + 1).padStart(2, '0')}</div>
   </button>`;
 }
 
@@ -2051,7 +2104,7 @@ async function renderInvite(el) {
   if (!roles.some(r => r.code === inviteRole)) inviteRole = roles[0]?.code || null;
 
   el.innerHTML = `
-    <div class="mt-card p-6 mt-fade-in max-w-2xl mx-auto">
+    <div class="mt-card p-6 mt-fade-in max-w-3xl mx-auto">
       <h2 class="font-bold text-lg mb-1" style="color: var(--mt-navy);">Invite a team member</h2>
       <p class="text-sm text-gray-500 mb-5">Generate a 7-day invite code to add someone to ${escapeHtml(myCompany.name)}.</p>
 
@@ -2059,31 +2112,28 @@ async function renderInvite(el) {
       <input id="inviteEmail" type="email" placeholder="teammate@company.com" class="w-full border rounded-lg px-3 py-2 text-sm mb-5 mt-1">
 
       <p class="text-xs font-medium text-gray-500 mb-2">Select a role</p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" id="inviteRoleGrid">
-        ${roles.map(r => inviteRoleTileHtml(r, r.code === inviteRole)).join('') || '<p class="text-gray-400 text-sm">No roles available.</p>'}
+      <div class="role-grid mb-5" id="inviteRoleGrid">
+        ${roles.map((r, i) => inviteRoleTileHtml(r, i, r.code === inviteRole)).join('') || '<p class="text-gray-400 text-sm">No roles available.</p>'}
       </div>
 
       <p id="inviteError" class="text-red-600 text-sm mb-3"></p>
       <button id="sendInviteBtn" type="button" class="mt-btn-primary">Generate Invite Code</button>
 
-      <div id="inviteResult" class="hidden mt-5 border rounded-xl p-4" style="border-color: var(--mt-border); background: var(--mt-green-light);">
-        <p class="text-xs font-medium text-gray-500 mb-1">Invite code (expires in 7 days)</p>
-        <div class="flex items-center gap-2">
-          <code id="inviteCodeText" class="flex-1 font-mono text-lg font-bold tracking-widest" style="color: var(--mt-green-dark);"></code>
-          <button id="copyInviteBtn" type="button" class="mt-btn-outline text-sm">Copy</button>
+      <div id="inviteResult" class="hidden mt-5 invite-code-box border rounded-xl p-5 text-center" style="border-color: var(--mt-border); background: #f4f7f5;">
+        <p class="text-xs font-medium text-gray-500 mb-2">Invite code — expires in 7 days</p>
+        <code id="inviteCodeText" class="block font-mono font-bold text-2xl mb-3" style="color: #0d2a4d; letter-spacing: .3em;"></code>
+        <div class="flex justify-center gap-2">
+          <button id="copyInviteBtn" type="button" class="mt-btn-primary text-sm">Copy Code</button>
+          <button id="newInviteBtn" type="button" class="mt-btn-outline text-sm">Generate Another</button>
         </div>
-        <p class="text-xs text-gray-500 mt-2">Share this code with the invited person — they'll enter it when signing up.</p>
+        <p class="text-xs text-gray-500 mt-3">Share this code with the invited person — they'll enter it when signing up.</p>
       </div>
     </div>`;
 
-  el.querySelectorAll('.inviteRoleTile').forEach(tile => {
+  el.querySelectorAll('.role-card').forEach(tile => {
     tile.onclick = () => {
       inviteRole = tile.dataset.role;
-      el.querySelectorAll('.inviteRoleTile').forEach(t => {
-        const active = t.dataset.role === inviteRole;
-        ['border-[#0d2a4d]', 'ring-2', 'ring-[#0d2a4d]/20', 'bg-[#0d2a4d]/5'].forEach(c => t.classList.toggle(c, active));
-        ['border-gray-200', 'hover:border-gray-300'].forEach(c => t.classList.toggle(c, !active));
-      });
+      el.querySelectorAll('.role-card').forEach(t => t.classList.toggle('selected', t.dataset.role === inviteRole));
     };
   });
 
@@ -2110,7 +2160,13 @@ async function renderInvite(el) {
   document.getElementById('copyInviteBtn').onclick = () => {
     const code = document.getElementById('inviteCodeText').textContent;
     const btn = document.getElementById('copyInviteBtn');
-    navigator.clipboard.writeText(code).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); });
+    navigator.clipboard.writeText(code).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy Code'; }, 1500); });
+  };
+
+  document.getElementById('newInviteBtn').onclick = () => {
+    document.getElementById('inviteResult').classList.add('hidden');
+    document.getElementById('inviteEmail').value = '';
+    document.getElementById('inviteEmail').focus();
   };
 }
 
