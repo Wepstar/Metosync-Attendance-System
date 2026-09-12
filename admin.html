@@ -21,7 +21,7 @@
   .payroll-content .mt-btn-outline { color: #0d2a4d; border-color: #0d2a4d; }
   .payroll-content .mt-btn-outline:hover { background: #e6eef7; }
   .payroll-content .mt-icon-btn.edit { background: #dbeafe; color: #1e40af; }
-  .payroll-subtabs { margin-top: 1rem; }
+  .payroll-subtabs { margin: 1rem 0; }
   .payroll-subtabs .mt-tab.active { background: #0d2a4d; color: white; }
 
   .role-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -472,7 +472,7 @@ async function renderPayroll(el) {
   if (payrollSubTab === 'history') content = payrollHistoryHtml();
   else if (payrollSubTab === 'quitpay') content = quitPayHtml();
   else { payrollSubTab = 'quickpay'; content = payrollQuickPayHtml(); }
-  el.innerHTML = `<div class="payroll-content">${content}</div>${payrollSubTabsHtml()}`;
+  el.innerHTML = `${payrollSubTabsHtml()}<div class="payroll-content">${content}</div>`;
   wirePayrollSubTabs(el);
   if (payrollSubTab === 'quickpay') wireQuickPay(el);
   if (payrollSubTab === 'history') wirePayrollHistory(el);
