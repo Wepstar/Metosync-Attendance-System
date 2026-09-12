@@ -119,7 +119,7 @@ begin
   select * into v_staff from public.staff where id = p_staff_id;
   if not found then raise exception 'Staff not found.'; end if;
   if p_mode not in ('direct', 'itemized') then raise exception 'Mode must be direct or itemized.'; end if;
-  if p_provider not in ('paystack', 'flutterwave', 'stripe') then raise exception 'Invalid provider.'; end if;
+  if p_provider not in ('paystack', 'stripe') then raise exception 'Invalid provider.'; end if;
 
   v_preview := public.staff_quit_settlement_preview(p_staff_id, p_last_working_date);
   v_currency := coalesce(p_currency, v_staff.currency, 'GHS');

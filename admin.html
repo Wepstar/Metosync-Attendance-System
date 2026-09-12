@@ -121,6 +121,9 @@ async function init() {
     session = await waitForInitialSession();
     if (session) {
       await loadProfile();
+      const params = new URLSearchParams(location.search);
+      if (params.get('tab')) activeTab = params.get('tab');
+      if (params.get('sub')) payrollSubTab = params.get('sub');
     }
   } catch (err) {
     console.error('Initialization error:', err);
@@ -466,13 +469,11 @@ function payrollPreviewHtml(preview, currency) {
 }
 
 function payrollSubTabsHtml() {
-  return `<div class="flex flex-wrap gap-1 mb-4 mt-card p-1">
-    <button type="button" class="mt-tab ${payrollSubTab === 'quickpay' ? 'active' : ''}" data-payroll-tab="quickpay"><span style="color:#15803d;font-weight:600;">💸 Quick Pay</span></button>
-    <span class="border-l border-gray-200 mx-1"></span>
+  return `<div class="payroll-subtabs flex flex-wrap gap-1 mt-card p-1">
     <a href="payroll.html" class="mt-tab">General Payroll</a>
     <a href="taxes.html" class="mt-tab">Taxes &amp; Incentives</a>
     <a href="review.html" class="mt-tab">Final Review</a>
-    <span class="border-l border-gray-200 mx-1"></span>
+    <button type="button" class="mt-tab ${payrollSubTab === 'quickpay' ? 'active' : ''}" data-payroll-tab="quickpay">💸 Quick Pay</button>
     <button type="button" class="mt-tab ${payrollSubTab === 'history' ? 'active' : ''}" data-payroll-tab="history">📋 Payroll History</button>
     <button type="button" class="mt-tab ${payrollSubTab === 'quitpay' ? 'active' : ''}" data-payroll-tab="quitpay">🚪 Quit Pay</button>
   </div>`;
@@ -499,42 +500,64 @@ async function renderPayroll(el) {
   if (payrollSubTab === 'history') content = payrollHistoryHtml();
   else if (payrollSubTab === 'quitpay') content = quitPayHtml();
   else { payrollSubTab = 'quickpay'; content = payrollQuickPayHtml(); }
-  el.innerHTML = `${payrollSubTabsHtml()}${content}`;
+  el.innerHTML = `<div class="payroll-content">${content}</div>${payrollSubTabsHtml()}`;
   wirePayrollSubTabs(el);
   if (payrollSubTab === 'quickpay') wireQuickPay(el);
   if (payrollSubTab === 'history') wirePayrollHistory(el);
   if (payrollSubTab === 'quitpay') wireQuitPay(el);
 }
 
+let payrollHistoryView = 'list';
+
 function payrollHistoryHtml() {
   const today = new Date();
+  const tab = (id, label) => `<button type="button" class="mt-tab ${payrollHistoryView === id ? 'active' : ''}" data-history-tab="${id}">${label}</button>`;
   return `<div class="mt-card p-5">
     <h2 class="font-medium mb-3">Payroll History</h2>
+    <div class="payroll-subtabs flex gap-1 mb-4 border-b pb-2" style="border-color: var(--mt-border);">
+      ${tab('list', 'Payroll History')}${tab('reports', 'Reports')}
+    </div>
     <div class="flex flex-wrap gap-2 mb-4">
       <input id="historyStart" type="date" value="${today.getFullYear()}-01-01" class="border rounded-lg px-3 py-2 text-sm">
       <input id="historyEnd" type="date" value="${today.toISOString().split('T')[0]}" class="border rounded-lg px-3 py-2 text-sm">
       <button id="loadHistoryBtn" type="button" class="mt-btn-primary text-sm">Load</button>
     </div>
     <p id="historyMsg" class="text-sm mb-2"></p>
-    <div class="overflow-x-auto"><table class="w-full mt-table text-sm"><thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Paid</th><th>Pending</th></tr></thead><tbody id="historyBody"><tr><td colspan="6" class="text-gray-400">Pick a range and load.</td></tr></tbody></table></div>
+    <div id="historyContent"></div>
   </div>`;
+}
+
+function payrollHistoryTableHtml(rows) {
+  return `<div class="overflow-x-auto"><table class="w-full mt-table text-sm"><thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Paid</th><th>Pending</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.period_name)}</td><td>${Number(r.gross_pay || 0).toFixed(2)}</td><td>${Number(r.total_deductions || 0).toFixed(2)}</td><td>${Number(r.net_pay || 0).toFixed(2)}</td><td>${Number(r.paid_amount || 0).toFixed(2)}</td><td>${Number(r.pending_amount || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="6" class="text-gray-400">No payroll periods in this range.</td></tr>'}</tbody></table></div>`;
+}
+
+function payrollReportsHtml(rows) {
+  const t = rows.reduce((acc, r) => ({ gross: acc.gross + Number(r.gross_pay || 0), deductions: acc.deductions + Number(r.total_deductions || 0), net: acc.net + Number(r.net_pay || 0), paid: acc.paid + Number(r.paid_amount || 0), pending: acc.pending + Number(r.pending_amount || 0) }), { gross: 0, deductions: 0, net: 0, paid: 0, pending: 0 });
+  const card = (label, value) => `<div class="bg-gray-50 rounded-lg p-3"><p class="text-xs text-gray-500">${label}</p><p class="font-bold">${value.toFixed(2)}</p></div>`;
+  return `<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+      ${card('Gross pay', t.gross)}${card('Deductions', t.deductions)}${card('Net pay', t.net)}${card('Paid', t.paid)}${card('Pending', t.pending)}
+    </div>
+    ${payrollHistoryTableHtml(rows)}`;
 }
 
 async function loadPayrollHistory(el) {
   const msg = document.getElementById('historyMsg');
-  const body = document.getElementById('historyBody');
+  const content = document.getElementById('historyContent');
   const start = document.getElementById('historyStart').value;
   const end = document.getElementById('historyEnd').value;
   if (!start || !end) { msg.className = 'text-sm mb-2 text-red-600'; msg.textContent = 'Choose a start and end date.'; return; }
   msg.textContent = '';
-  body.innerHTML = '<tr><td colspan="6" class="text-gray-400">Loading…</td></tr>';
+  content.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
   const { data, error } = await sb.rpc('report_payroll_summary', { p_company_id: myProfile.company_id, p_start: start, p_end: end });
-  if (error) { body.innerHTML = `<tr><td colspan="6" class="text-red-600">${escapeHtml(error.message)}</td></tr>`; return; }
+  if (error) { content.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
   const rows = Array.isArray(data) ? data : [];
-  body.innerHTML = rows.map(r => `<tr><td>${escapeHtml(r.period_name)}</td><td>${Number(r.gross_pay || 0).toFixed(2)}</td><td>${Number(r.total_deductions || 0).toFixed(2)}</td><td>${Number(r.net_pay || 0).toFixed(2)}</td><td>${Number(r.paid_amount || 0).toFixed(2)}</td><td>${Number(r.pending_amount || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="6" class="text-gray-400">No payroll periods in this range.</td></tr>';
+  content.innerHTML = payrollHistoryView === 'reports' ? payrollReportsHtml(rows) : payrollHistoryTableHtml(rows);
 }
 
 function wirePayrollHistory(el) {
+  el.querySelectorAll('[data-history-tab]').forEach(btn => {
+    btn.onclick = () => { payrollHistoryView = btn.dataset.historyTab; renderPayroll(el); };
+  });
   document.getElementById('loadHistoryBtn').onclick = () => loadPayrollHistory(el);
   loadPayrollHistory(el);
 }
@@ -547,7 +570,7 @@ function quitPayHtml() {
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
       <select id="quitStaff" class="border rounded-lg px-3 py-2 text-sm">${staffOptions || '<option value="">No staff</option>'}</select>
       <input id="quitLastDate" type="date" class="border rounded-lg px-3 py-2 text-sm">
-      <select id="quitProvider" class="border rounded-lg px-3 py-2 text-sm"><option value="paystack">Paystack</option><option value="flutterwave">Flutterwave</option></select>
+      <select id="quitProvider" class="border rounded-lg px-3 py-2 text-sm"><option value="paystack">Paystack</option><option value="stripe">Stripe</option></select>
     </div>
     <button id="quitPreviewBtn" type="button" class="mt-btn-outline text-sm">Preview Settlement</button>
     <div id="quitPreviewArea" class="mt-4"></div>
@@ -673,7 +696,6 @@ function payrollQuickPayHtml() {
         <input id="quickPayAmount" type="number" min="0" step="0.01" class="border rounded-lg px-3 py-2 text-sm" placeholder="Amount">
         <select id="quickPayProvider" class="border rounded-lg px-3 py-2 text-sm">
           <option value="paystack">Paystack</option>
-          <option value="flutterwave">Flutterwave</option>
         </select>
         <select id="quickPayMethod" class="border rounded-lg px-3 py-2 text-sm">
           <option value="bank">Bank Transfer</option>
@@ -683,7 +705,7 @@ function payrollQuickPayHtml() {
         <input id="quickPayCode" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Bank code / MoMo provider (MTN, VOD, TGO)">
         <input id="quickPayName" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Bank name / MoMo wallet name">
       </div>
-      <button id="quickPayBtn" type="button" class="rounded-lg px-4 py-2 text-sm font-semibold text-white" style="background: #16a34a;">💸 Pay Now</button>
+      <button id="quickPayBtn" type="button" class="rounded-lg px-4 py-2 text-sm font-semibold text-white" style="background: #0d2a4d;">💸 Pay Now</button>
       <p id="quickPayFeedback" class="text-sm mt-2"></p>
     </div>`;
 }
@@ -703,7 +725,7 @@ function wireQuickPay(el) {
 
     if (!staffId || !amount || !account || !code || !name) { feedback.innerHTML = '<span class="text-red-600">All fields are required.</span>'; return; }
     if (method === 'momo' && !['MTN','VOD','TGO'].includes(code.toUpperCase())) { feedback.innerHTML = '<span class="text-red-600">MoMo provider must be MTN, VOD, or TGO.</span>'; return; }
-    if (!['paystack','flutterwave'].includes(provider)) { feedback.innerHTML = '<span class="text-red-600">Invalid provider.</span>'; return; }
+    if (!['paystack'].includes(provider)) { feedback.innerHTML = '<span class="text-red-600">Invalid provider.</span>'; return; }
 
     feedback.innerHTML = '<span class="text-blue-600">Initiating payment…</span>';
     try {
@@ -2247,7 +2269,6 @@ async function renderPayments(el) {
               <div class="payableForm hidden mt-3 space-y-2">
                 <select class="paymentProvider border rounded-lg px-3 py-2 text-sm w-full">
                   <option value="paystack">Paystack</option>
-                  <option value="flutterwave">Flutterwave</option>
                 </select>
                 <select class="paymentMethod border rounded-lg px-3 py-2 text-sm w-full">
                   <option value="bank">Bank Transfer</option>
@@ -2292,7 +2313,7 @@ async function renderPayments(el) {
         const name = form.querySelector('.bankName').value.trim();
         if (!account || !code || !name) { feedback.innerHTML = '<span class="text-red-600">Payment details required.</span>'; return; }
         if (method === 'momo' && !['MTN','VOD','TGO'].includes(code.toUpperCase())) { feedback.innerHTML = '<span class="text-red-600">MoMo provider must be MTN, VOD, or TGO.</span>'; return; }
-        if (!['paystack','flutterwave'].includes(provider)) { feedback.innerHTML = '<span class="text-red-600">Invalid provider.</span>'; return; }
+        if (!['paystack'].includes(provider)) { feedback.innerHTML = '<span class="text-red-600">Invalid provider.</span>'; return; }
 
         feedback.innerHTML = `<span class="text-blue-600">Initiating ${provider} payout…</span>`;
         try {

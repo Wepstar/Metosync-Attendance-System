@@ -1259,21 +1259,6 @@ async function renderPaymentProviders(backFn = renderOwnerDashboard, title = 'Ow
         <button id="savePaystackBtn" type="button" class="mt-btn-primary text-sm">Save Paystack Provider</button>
         <p id="paystackFeedback" class="text-sm mt-2"></p>
       </div>
-      <div class="mt-card p-5 mb-5">
-        <h2 class="font-medium text-sm mb-3">Configure Flutterwave</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          <input id="flutterwavePublicKey" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Public key (FLWPUBK_TEST_...)">
-          <input id="flutterwaveSecretKey" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Secret key (FLWSECK_TEST_...)">
-          <input id="flutterwaveWebhookSecret" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Webhook secret">
-          <input id="flutterwaveCurrency" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="Currency (GHS)" value="GHS">
-          <select id="flutterwaveLive" class="border rounded-lg px-3 py-2 text-sm">
-            <option value="false" selected>Test mode</option>
-            <option value="true">Live mode</option>
-          </select>
-        </div>
-        <button id="saveFlutterwaveBtn" type="button" class="mt-btn-primary text-sm">Save Flutterwave Provider</button>
-        <p id="flutterwaveFeedback" class="text-sm mt-2"></p>
-      </div>
       <div class="mt-card p-5">
         <h2 class="font-medium text-sm mb-3">Configured Providers</h2>
         <div class="space-y-2">
@@ -1309,29 +1294,6 @@ async function renderPaymentProviders(backFn = renderOwnerDashboard, title = 'Ow
       p_enabled: true
     });
     feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Paystack provider saved.</span>`;
-    if (!error) setTimeout(() => renderPaymentProviders(backFn, title), 600);
-  };
-
-  document.getElementById('saveFlutterwaveBtn').onclick = async () => {
-    const feedback = document.getElementById('flutterwaveFeedback');
-    const publicKey = document.getElementById('flutterwavePublicKey').value.trim();
-    const secretKey = document.getElementById('flutterwaveSecretKey').value.trim();
-    const webhookSecret = document.getElementById('flutterwaveWebhookSecret').value.trim();
-    const currency = document.getElementById('flutterwaveCurrency').value.trim() || 'GHS';
-    const isLive = document.getElementById('flutterwaveLive').value === 'true';
-    if (!secretKey) { feedback.innerHTML = '<span class="text-red-600">Secret key is required.</span>'; return; }
-    feedback.innerHTML = '<span class="text-blue-600">Saving…</span>';
-    const { error } = await sb.rpc('watchguard_set_payment_provider', {
-      p_company_id: null,
-      p_provider: 'flutterwave',
-      p_public_key: publicKey,
-      p_secret_key: secretKey,
-      p_webhook_secret: webhookSecret,
-      p_currency: currency,
-      p_is_live: isLive,
-      p_enabled: true
-    });
-    feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Flutterwave provider saved.</span>`;
     if (!error) setTimeout(() => renderPaymentProviders(backFn, title), 600);
   };
 }

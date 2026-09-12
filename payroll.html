@@ -42,7 +42,7 @@
 <div class="table-wrap"><table><thead><tr><th><input id="selectAll" class="row-check" type="checkbox" aria-label="Select all staff"></th><th>Staff Name</th><th>Code</th><th>Dates (Start–End)</th><th>Gross Earnings</th></tr></thead><tbody id="staffRows"></tbody></table></div>
 <div class="table-foot"><div class="pager">Record: <button aria-label="Previous record">◀</button><strong id="recordCount">No records</strong><button aria-label="Next record">▶</button></div><button class="btn next-staff" onclick="toast('Import staff to begin')">Next Staff Member →</button></div>
 </section>
-<nav class="workflow-nav" aria-label="Payroll workflow"><a class="active" href="payroll.html" aria-current="page">01 General Payroll</a><a href="taxes.html">02 Taxes &amp; Incentives →</a><a href="review.html">03 Final Review →</a></nav>
+<nav class="workflow-nav" aria-label="Payroll workflow"><a class="active" href="payroll.html" aria-current="page">01 General Payroll</a><a href="taxes.html">02 Taxes &amp; Incentives</a><a href="review.html">03 Final Review</a><a href="admin.html?tab=payroll&sub=quickpay">💸 Quick Pay</a><a href="admin.html?tab=payroll&sub=history">📋 Payroll History</a><a href="admin.html?tab=payroll&sub=quitpay">🚪 Quit Pay</a></nav>
 <section class="panel" id="taxes"><div class="panel-head"><h2>Taxes and Incentives <span class="eyebrow" style="margin-left:8px">Tab</span></h2><button class="btn" onclick="toast('Terms and conditions editor opened')">＋ Add T's &amp; C's</button></div><div class="tax-layout"><div><p class="helper">Select taxes and incentives above to apply to staff below.</p><p class="helper">Choose one or more items, then apply them to selected staff or the entire run.</p></div><div class="tax-actions"><button class="btn" onclick="toast('Selected taxes applied')">Apply to Selected</button><button class="btn primary" onclick="toast('Taxes applied to all staff')">Apply to All</button></div></div><div class="terms">Selected controls: <strong id="selectedTaxes">None</strong></div></section>
 <section class="panel" id="review"><div class="panel-head"><h2>Payroll Final Review</h2><div class="tax-actions"><button class="btn" onclick="window.print()">Print</button><button class="btn" onclick="toast('PDF/Excel export prepared')">Export via PDF/Excel</button><button class="btn" onclick="toast('Review sent by email')">Email</button></div></div><div class="review-grid"><div class="metric"><span>Total staff</span><strong>—</strong></div><div class="metric"><span>Gross earnings</span><strong id="grossTotal">GHS 0.00</strong></div><div class="metric"><span>Selected taxes</span><strong id="taxTotal">0</strong></div></div><div class="review-actions"><button class="gateway" onclick="toast('Pay Gateway is ready for the reviewed run')">Next: Proceed to Pay Gateway →</button></div></section>
 </main>
@@ -52,7 +52,7 @@
 <script>
 document.querySelector('.window-title').textContent = 'Metosync Attendance and Payroll';
 const companyCode = new URLSearchParams(window.location.search).get('company') || '';
-document.querySelectorAll('.workflow-nav a').forEach(link => { if (companyCode) link.href += `?company=${encodeURIComponent(companyCode)}`; });
+document.querySelectorAll('.workflow-nav a').forEach(link => { if (companyCode && !link.href.includes('admin.html')) link.href += `?company=${encodeURIComponent(companyCode)}`; });
 async function loadOrganizationBrand() {
 	if (!companyCode) return;
 	const { data } = await sb.rpc('staff_get_company', { p_company_code: companyCode });

@@ -148,6 +148,59 @@ Check items off as they're completed. This file is the actual answer to
 - [ ] Still open: edge functions, storage bucket policies, auth config,
       migration history audits; minor enumeration risks
 
+## ✅ Done — Payroll workspace menu additions (backend)
+
+- [x] Confirmed live page structure via `payroll.html` (fetched directly):
+      a "Payroll workspace" with a numbered 3-step wizard — 01 General
+      Payroll, 02 Taxes & Incentives, 03 Final Review
+- [x] **Payroll History**: no new backend needed — existing
+      `report_payroll_summary`, `payroll_periods`, and `payroll_entries`
+      already hold everything needed. This is purely a Devin frontend task.
+- [x] **Quit Pay (final settlement)**: built from scratch — no backend
+      existed previously.
+  - [x] `staff_quit_settlement_preview(p_staff_id, p_last_working_date)` —
+        read-only, returns pro-rated final salary, leave entitlement/taken/
+        unused days, leave payout, and a list of the staff member's active
+        deductions (name + amount where set) for the admin to review
+  - [x] `staff_process_quit_settlement(...)` — flexible per request: mode
+        `'direct'` (admin enters one lump sum) or `'itemized'` (admin
+        chooses which of final salary / leave payout / a deduction amount
+        to include); creates a payment request, sets staff to inactive,
+        logs to company_activity_log (→ visible in Registry)
+  - [x] Calculation assumptions documented in the migration comments
+        (simple pro-ration, full annual leave entitlement not tenure-
+        pro-rated, GHS 30-day divisor) — flagged as adjustable, not
+        presented as definitive HR/legal policy
+- [ ] Devin: add "Payroll History" and "Quit Pay" as menu items in the
+      Payroll workspace, alongside General Payroll/Taxes & Incentives/
+      Final Review — prompt below
+
+## ✅ Done — Flutterwave removal & menu ordering feedback
+
+- [x] Removed `flutterwave` from the backend's allowed payment providers
+      (`payment_providers_provider_check` now only permits paystack/stripe)
+      — confirmed no company had a flutterwave row, so this was safe
+- [x] Confirmed via direct page fetch that the Payroll workspace nav (General
+      Payroll/Taxes & Incentives/Final Review) is JS-rendered, not static —
+      "Quick Pay appearing twice" and Flutterwave in the UI weren't visible
+      in the fetched markup, trusting user's direct browser observation
+- [ ] Devin: fix duplicate "Quick Pay" menu entry, remove Flutterwave from
+      any frontend provider list/dropdown, reorder the Payroll workspace
+      menu to: General Payroll, Taxes & Incentives, Final Review, Quick
+      Pay, Payroll History — and add "Reports" as a sub-item within Payroll
+      History — prompt below
+
+## ✅ Done — Attendance workspace menu additions (backend already existed)
+
+- [x] Confirmed all four requested items map to existing, already-secured
+      backend — no new migration needed, pure Devin frontend task:
+      "Set Status for a Day" → `set_attendance_status`; "Location Checker"
+      → `admin_get_latest_locations` + `admin_request_location_check` +
+      `admin_request_location_for_all`; "Broadcast Notifications" →
+      `admin_send_notification`; "Attendance for updated date" (viewing
+      attendance for any chosen date, not just today) → `report_attendance_summary`
+- [ ] Devin: add the four tabs inside Attendance — prompt below
+
 ## ⬜ Phase 1 — Foundation
 
 - [ ] **Administrator workspace**

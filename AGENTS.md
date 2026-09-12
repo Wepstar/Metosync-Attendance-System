@@ -133,8 +133,9 @@ This document is written for Watchguard (and future AI agents) so they can under
 ### Payroll Tab (`admin.html`)
 **What it does**
 - Payroll content lives inside the admin dashboard (same container as other tabs; no separate workspace pages, no Back button).
-- Payroll nav (top of payroll card): **💸 Quick Pay** | links to **General Payroll** (`payroll.html`), **Taxes & Incentives** (`taxes.html`), **Final Review** (`review.html`) workspaces | **📋 Payroll History** and **🚪 Quit Pay** as standalone in-app views (not numbered wizard steps).
-- **Payroll History** calls `report_payroll_summary(p_company_id, p_start, p_end)` and lists periods with gross/deductions/net/paid/pending.
+- Payroll nav (bottom of payroll card): **General Payroll** (`payroll.html`) → **Taxes & Incentives** (`taxes.html`) → **Final Review** (`review.html`) → **💸 Quick Pay** → **📋 Payroll History** → **🚪 Quit Pay**.
+- Workspace pages link back to embedded views via `admin.html?tab=payroll&sub=quickpay|history|quitpay`.
+- **Payroll History** has nested tabs: **Payroll History** (period list) and **Reports** (range totals + list); both call `report_payroll_summary(p_company_id, p_start, p_end)`.
 - **Quit Pay** calls `staff_quit_settlement_preview(p_staff_id, p_last_working_date)` (pro-rated salary, leave entitled/taken/unused, leave payout, active deductions — all computed server-side), then `staff_process_quit_settlement(...)` with mode `direct` or `itemized`; it creates a `payment_requests` row and marks staff inactive automatically. Both live in `033_quit_pay.sql`.
 - Active sub-tab uses navy `#0d2a4d`; all payroll green was replaced with navy brand colors.
 - General Payroll (`payrollGeneralHtml`) needs an open draft period; if none exists a Start New Payroll Period form is shown.
@@ -229,9 +230,10 @@ This document is written for Watchguard (and future AI agents) so they can under
 ## 7. Payments Architecture
 
 ### Provider flow
-1. Admin chooses provider and method in `admin.html`.
-2. Edge Function (`paystack-payout` or `flutterwave-payout`) validates, creates `payment_request`, calls provider API.
-3. Provider webhook (`paystack-webhook` / `flutterwave-webhook`) reconciles status.
+1. Admin chooses provider and method in `admin.html`. **UI only offers Paystack** (Flutterwave was removed from all frontend selects/config screens; `payment_providers_provider_check` now allows only `paystack`/`stripe`).
+2. Edge Function (`paystack-payout`) validates, creates `payment_request`, calls provider API.
+3. Provider webhook (`paystack-webhook`) reconciles status.
+4. Legacy `flutterwave-*` Edge Functions still exist server-side but are no longer reachable from the UI.
 
 ### MoMo provider codes
 - Paystack: `MTN`, `VOD`, `TGO` with `type: mobile_money`.
