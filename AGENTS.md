@@ -151,14 +151,26 @@ This document is written for Watchguard (and future AI agents) so they can under
 ### Invite Team Tab (`admin.html` → Invite Team)
 **What it does**
 - Owner-only tab (requires `manage_admins` permission).
-- Collects an email and a role from the `INVITE_ROLES` array in `admin.html` (icon-tile grid; extend the array to add roles).
+- Collects an email and a role; the icon-tile grid is built from `list_active_portfolios()` (nothing is hardcoded in the UI).
 - Calls `admin_create_invite(p_company_id, p_email, p_role, p_created_by)` — returns an 8-char code valid for 7 days, shown with a Copy button.
 - `p_created_by` is `myProfile.id`; the server independently verifies `manage_admins` permission or `owner` role.
+- `p_role` is the portfolio `code`; for an invite to be accepted the code must satisfy the `admin_users.role` CHECK (`owner, admin, manager, payroll_officer, viewer`).
 
 **What can go wrong**
+- Tile grid empty or RPC error → `list_active_portfolios` missing; run `032_portfolios.sql` and refresh PostgREST.
 - RPC returns "You do not have permission to invite admins." → caller lacks `manage_admins` (owner only today).
-- Tab hidden → `my_permissions` RPC missing `manage_admins`.
-- Invite accepted but wrong role → `p_role` must be one of `owner, admin, manager, payroll_officer, viewer` (`admin_users.role` constraint).
+- Invite accepted but role rejected → portfolio `code` not in the `admin_users.role` CHECK list.
+
+### Portfolios (`platform.html` → Registry → 🗂 Portfolios)
+**What it does**
+- `registry_list_portfolios()` returns every portfolio (`code`, `display_name`, `description`, `is_active`, `sort_order`) as tiles.
+- Toggle switch calls `registry_set_portfolio_active(p_code, p_is_active)`.
+- Add form calls `registry_add_portfolio(p_code, p_display_name, p_description, p_sort_order)`.
+- Seeded with the four RBAC roles so invite codes keep working with `admin_accept_invite`.
+
+**What can go wrong**
+- RPCs missing → run `032_portfolios.sql`, then `SELECT pg_notify('pgrst', 'reload schema');`.
+- Newly added portfolio code not in `admin_users.role` CHECK → invite acceptance fails; add the code to the CHECK constraint first or keep codes aligned to RBAC roles.
 
 ## 5. Platform Dashboard (`platform.html`)
 

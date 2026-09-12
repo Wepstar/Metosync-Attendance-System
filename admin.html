@@ -1867,26 +1867,25 @@ async function renderReports(el) {
   };
 }
 
-// Roles that can be invited. Extend this list as new roles are added.
-const INVITE_ROLES = [
-  { value: 'owner', label: 'Super Admin', icon: '👑', desc: 'Full control over company settings, staff, payroll, and data' },
-  { value: 'payroll_officer', label: 'Payroll Manager', icon: '💰', desc: 'Manage payroll runs, payments, and reports' },
-  { value: 'admin', label: 'HR', icon: '👥', desc: 'Manage staff, sites, attendance, and notifications' },
-  { value: 'viewer', label: 'View-Only', icon: '👁️', desc: 'Read-only access to reports and dashboards' }
-];
-let inviteRole = INVITE_ROLES[0].value;
+let inviteRole = null;
 
-function inviteRoleTileHtml(role, active) {
+function inviteRoleTileHtml(portfolio, active) {
   const activeCls = 'border-[#0d2a4d] ring-2 ring-[#0d2a4d]/20 bg-[#0d2a4d]/5';
   const idleCls = 'border-gray-200 hover:border-gray-300';
-  return `<button type="button" class="inviteRoleTile text-left border rounded-xl p-4 transition ${active ? activeCls : idleCls}" data-role="${role.value}">
-    <div class="text-2xl mb-2">${role.icon}</div>
-    <div class="font-semibold text-sm" style="color: var(--mt-navy);">${role.label}</div>
-    <div class="text-xs text-gray-500 mt-1">${role.desc}</div>
+  return `<button type="button" class="inviteRoleTile text-left border rounded-xl p-4 transition ${active ? activeCls : idleCls}" data-role="${escapeHtml(portfolio.code)}">
+    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold mb-2" style="background: var(--mt-navy);">${escapeHtml((portfolio.display_name || portfolio.code || '?').charAt(0).toUpperCase())}</div>
+    <div class="font-semibold text-sm" style="color: var(--mt-navy);">${escapeHtml(portfolio.display_name)}</div>
+    <div class="text-xs text-gray-500 mt-1">${escapeHtml(portfolio.description || '')}</div>
   </button>`;
 }
 
-function renderInvite(el) {
+async function renderInvite(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading…</p>`;
+  const { data: portfolios, error: listError } = await sb.rpc('list_active_portfolios');
+  if (listError) { el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-red-600 text-sm">${escapeHtml(listError.message)}</p></div>`; return; }
+  const roles = Array.isArray(portfolios) ? portfolios : [];
+  if (!roles.some(r => r.code === inviteRole)) inviteRole = roles[0]?.code || null;
+
   el.innerHTML = `
     <div class="mt-card p-6 mt-fade-in max-w-2xl mx-auto">
       <h2 class="font-bold text-lg mb-1" style="color: var(--mt-navy);">Invite a team member</h2>
@@ -1897,7 +1896,7 @@ function renderInvite(el) {
 
       <p class="text-xs font-medium text-gray-500 mb-2">Select a role</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" id="inviteRoleGrid">
-        ${INVITE_ROLES.map(r => inviteRoleTileHtml(r, r.value === inviteRole)).join('')}
+        ${roles.map(r => inviteRoleTileHtml(r, r.code === inviteRole)).join('') || '<p class="text-gray-400 text-sm">No roles available.</p>'}
       </div>
 
       <p id="inviteError" class="text-red-600 text-sm mb-3"></p>
@@ -1928,6 +1927,7 @@ function renderInvite(el) {
     const email = document.getElementById('inviteEmail').value.trim();
     const err = document.getElementById('inviteError');
     if (!email) { err.textContent = 'Enter an email address.'; return; }
+    if (!inviteRole) { err.textContent = 'Select a role.'; return; }
     err.textContent = '';
     const btn = document.getElementById('sendInviteBtn');
     btn.disabled = true; btn.textContent = 'Generating…';

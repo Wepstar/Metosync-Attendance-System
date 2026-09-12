@@ -747,6 +747,7 @@ async function renderRegistry() {
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">📋 Registry <span class="text-xs font-normal text-green-600 align-middle">● live</span></h1>
         <div class="flex items-center gap-3">
           <button id="registryAdminsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">👤 Admins</button>
+          <button id="registryPortfoliosBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #7c3aed;">🗂 Portfolios</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
       </div>
@@ -769,6 +770,7 @@ async function renderRegistry() {
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
   document.getElementById('registryAdminsBtn').onclick = () => renderRegistryAdmins();
+  document.getElementById('registryPortfoliosBtn').onclick = () => renderRegistryPortfolios();
   wireCompanyInteractions(companies || []);
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_onboarding_invite');
@@ -888,6 +890,77 @@ async function renderRegistryAdmins() {
       renderRegistryAdmins();
     };
   });
+}
+
+async function renderRegistryPortfolios() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading portfolios…</p>`;
+  const { data: portfolios, error } = await sb.rpc('registry_list_portfolios');
+  if (error) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(error.message)}</p>`; return; }
+  const list = Array.isArray(portfolios) ? portfolios : [];
+
+  app().className = 'platform-wide';
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Registry → 🗂 Portfolios</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Registry</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
+        ${list.map(p => `
+          <div class="mt-card p-4 border rounded-xl ${p.is_active ? '' : 'opacity-60'}">
+            <div class="flex justify-between items-start gap-2">
+              <div class="flex items-center gap-2">
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold" style="background: var(--mt-navy);">${escapeHtml((p.display_name || p.code || '?').charAt(0).toUpperCase())}</span>
+                <div>
+                  <p class="font-semibold text-sm">${escapeHtml(p.display_name)}</p>
+                  <p class="text-xs text-gray-400 font-mono">${escapeHtml(p.code)}</p>
+                </div>
+              </div>
+              <label class="inline-flex items-center cursor-pointer" title="${p.is_active ? 'Active' : 'Inactive'}">
+                <input type="checkbox" class="portfolioToggle sr-only peer" data-code="${escapeHtml(p.code)}" ${p.is_active ? 'checked' : ''}>
+                <span class="w-9 h-5 rounded-full bg-gray-300 peer-checked:bg-[#0d2a4d] relative transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-transform peer-checked:after:translate-x-4"></span>
+              </label>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">${escapeHtml(p.description || '')}</p>
+            <p class="text-xs mt-2 ${p.is_active ? 'text-[#0d2a4d] font-semibold' : 'text-gray-400'}">${p.is_active ? 'Active' : 'Inactive'} · order ${p.sort_order ?? 0}</p>
+          </div>`).join('') || '<p class="text-gray-400 text-sm">No portfolios yet.</p>'}
+      </div>
+
+      <div class="mt-card p-5">
+        <h2 class="font-medium text-sm mb-3">Add portfolio</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+          <input id="portfolioCode" placeholder="Code (e.g. executive_director)" class="border rounded-lg px-3 py-2 text-sm font-mono">
+          <input id="portfolioName" placeholder="Display name" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="portfolioDesc" placeholder="Description" class="border rounded-lg px-3 py-2 text-sm sm:col-span-2">
+          <input id="portfolioOrder" type="number" placeholder="Sort order" value="0" class="border rounded-lg px-3 py-2 text-sm">
+        </div>
+        <p id="portfolioFeedback" class="text-sm mb-2"></p>
+        <button id="addPortfolioBtn" type="button" class="mt-btn-primary text-sm">Add portfolio</button>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderRegistry();
+
+  document.querySelectorAll('.portfolioToggle').forEach(toggle => {
+    toggle.onchange = async () => {
+      const { error } = await sb.rpc('registry_set_portfolio_active', { p_code: toggle.dataset.code, p_is_active: toggle.checked });
+      if (error) { alert('Toggle failed: ' + error.message); toggle.checked = !toggle.checked; return; }
+      renderRegistryPortfolios();
+    };
+  });
+
+  document.getElementById('addPortfolioBtn').onclick = async () => {
+    const feedback = document.getElementById('portfolioFeedback');
+    const { error } = await sb.rpc('registry_add_portfolio', {
+      p_code: document.getElementById('portfolioCode').value.trim(),
+      p_display_name: document.getElementById('portfolioName').value.trim(),
+      p_description: document.getElementById('portfolioDesc').value.trim(),
+      p_sort_order: Number(document.getElementById('portfolioOrder').value || 0)
+    });
+    if (error) { feedback.className = 'text-sm mb-2 text-red-600'; feedback.textContent = error.message; return; }
+    renderRegistryPortfolios();
+  };
 }
 
 async function renderWatchguardDashboard() {
