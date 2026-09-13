@@ -766,6 +766,7 @@ async function renderRegistry() {
           <button id="registryAdminsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">👤 Admins</button>
           <button id="registryInviteBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #0d2a4d;">✉️ Team Invite</button>
           <button id="registryPortfoliosBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #7c3aed;">🗂 Portfolios</button>
+          <button id="registryAccessBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #f59e0b;">🔐 Access</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
       </div>
@@ -790,6 +791,7 @@ async function renderRegistry() {
   document.getElementById('registryAdminsBtn').onclick = () => renderRegistryAdmins();
   document.getElementById('registryInviteBtn').onclick = () => renderRegistryInvite();
   document.getElementById('registryPortfoliosBtn').onclick = () => renderRegistryPortfolios();
+  document.getElementById('registryAccessBtn').onclick = () => renderRegistryAccess();
   wireCompanyInteractions(companies || []);
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_onboarding_invite');
@@ -923,6 +925,78 @@ function inviteRoleTileHtml(portfolio, index, active) {
     </div>
     <div class="role-step">${String(index + 1).padStart(2, '0')}</div>
   </button>`;
+}
+
+async function renderRegistryAccess() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
+  const { data: companies, error: cErr } = await sb.rpc('platform_list_companies');
+  if (cErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(cErr.message)}</p>`; return; }
+  const companyList = Array.isArray(companies) ? companies : [];
+
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Registry → 🔐 Section Access</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Registry</button>
+      </div>
+      <div class="mt-card p-6">
+        <p class="text-sm text-gray-500 mb-4">Uncheck a box to hide that section from that staff member. Checked means they can see it.</p>
+        <label class="text-xs font-medium text-gray-500" for="accessCompany">Organization</label>
+        <select id="accessCompany" class="w-full border rounded-lg px-3 py-2 text-sm mb-4 mt-1">
+          ${companyList.map(c => `<option value="${c.id}">${escapeHtml(c.name || '')}</option>`).join('') || '<option value="">No companies</option>'}
+        </select>
+        <div id="accessGrid" class="overflow-x-auto"><p class="text-gray-400 text-sm">Pick an organization.</p></div>
+        <p id="accessMsg" class="text-sm mt-3"></p>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderRegistry();
+
+  const loadGrid = async companyId => {
+    const grid = document.getElementById('accessGrid');
+    grid.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+    const { data, error } = await sb.rpc('list_staff_section_access', { p_company_id: companyId });
+    if (error) { grid.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+    grid.innerHTML = sectionAccessTableHtml(data);
+    grid.querySelectorAll('.accessCheck').forEach(box => {
+      box.onchange = async () => {
+        const msg = document.getElementById('accessMsg');
+        const { error: rpcError } = await sb.rpc('set_staff_section_access', { p_admin_user_id: box.dataset.adminUser, p_section_code: box.dataset.section, p_allowed: box.checked });
+        msg.className = `text-sm mt-3 ${rpcError ? 'text-red-600' : 'text-green-700'}`;
+        msg.textContent = rpcError ? rpcError.message : 'Saved.';
+        if (rpcError) box.checked = !box.checked;
+      };
+    });
+  };
+
+  const select = document.getElementById('accessCompany');
+  select.onchange = () => loadGrid(select.value);
+  if (select.value) loadGrid(select.value);
+}
+
+function sectionAccessTableHtml(data) {
+  const rows = Array.isArray(data) ? data : [];
+  const staffMap = new Map();
+  const sections = [];
+  rows.forEach(row => {
+    const staffId = row.admin_user_id || row.staff_id || row.user_id || row.id;
+    const name = row.full_name || row.staff_name || row.name || 'Staff member';
+    if (!staffMap.has(staffId)) staffMap.set(staffId, { name, access: {} });
+    const record = staffMap.get(staffId);
+    if (row.sections && typeof row.sections === 'object' && !Array.isArray(row.sections)) {
+      Object.entries(row.sections).forEach(([code, allowed]) => { record.access[code] = !!allowed; if (!sections.includes(code)) sections.push(code); });
+    } else if (Array.isArray(row.sections)) {
+      row.sections.forEach(s => { const code = s.section_code || s.code; record.access[code] = s.has_access ?? s.allowed ?? s.can_access ?? true; if (!sections.includes(code)) sections.push(code); });
+    } else if (row.section_code) {
+      record.access[row.section_code] = row.has_access ?? row.allowed ?? row.can_access ?? true;
+      if (!sections.includes(row.section_code)) sections.push(row.section_code);
+    }
+  });
+  if (!staffMap.size) return '<p class="text-gray-400 text-sm">No staff found.</p>';
+  const label = code => code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return `<table class="w-full mt-table text-sm"><thead><tr><th>Staff member</th>${sections.map(s => `<th>${escapeHtml(label(s))}</th>`).join('')}</tr></thead><tbody>
+    ${[...staffMap.entries()].map(([staffId, record]) => `<tr><td class="font-medium">${escapeHtml(record.name)}</td>${sections.map(s => `<td><input type="checkbox" class="accessCheck" data-admin-user="${staffId}" data-section="${escapeHtml(s)}" ${record.access[s] !== false ? 'checked' : ''}></td>`).join('')}</tr>`).join('')}
+  </tbody></table>`;
 }
 
 async function renderRegistryInvite() {

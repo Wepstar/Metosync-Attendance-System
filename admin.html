@@ -208,7 +208,7 @@ function renderNoCompany() {
 function renderDashboard() {
     const plan = myCompany.service_plan || 'both';
   const tabs = [
-    ['owner', 'executive_director'].includes(myProfile.role) ? { id: 'executive', label: 'Executive' } : null,
+    { id: 'executive', label: 'Company Staff' },
     can('manage_staff') ? { id: 'staff', label: 'Staff' } : null,
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
@@ -2197,11 +2197,15 @@ let execReportEnd = '';
 
 function execSubTabsHtml() {
   const tab = (id, label) => `<button type="button" class="mt-tab ${execSubTab === id ? 'active' : ''}" data-exec-tab="${id}">${label}</button>`;
+  const directorTabs = ['owner', 'executive_director'].includes(myProfile.role)
+    ? `${tab('access', '🔓 Section Access')}${tab('password', '🔑 Password')}`
+    : '';
   return `<div class="payroll-subtabs flex flex-wrap gap-1 mt-card p-1">
     ${tab('overview', 'Overview')}
     ${tab('approvals', 'Approvals')}
     ${tab('reports', 'Reports')}
     ${tab('leave', 'Leave')}
+    ${directorTabs}
   </div>`;
 }
 
@@ -2211,13 +2215,46 @@ function wireExecSubTabs(el) {
   });
 }
 
+let companyStaffUnlocked = false;
+
+function renderCompanyStaffGate(el) {
+  const isDirector = ['owner', 'executive_director'].includes(myProfile.role);
+  el.innerHTML = `<div class="mt-card p-6 max-w-md mx-auto mt-6 mt-fade-in">
+    <h2 class="font-medium mb-1">Company Staff area</h2>
+    <p class="text-sm text-gray-500 mb-4">This area is protected by your company's staff password. Enter it to continue.</p>
+    <input id="csPassword" type="password" placeholder="Staff password" class="block w-full border rounded-lg px-3 py-2 text-sm mb-2" autocomplete="off">
+    <p id="csGateError" class="text-red-600 text-sm mb-2"></p>
+    <button id="csUnlockBtn" type="button" class="mt-btn-primary w-full">Unlock</button>
+    ${isDirector ? `<div class="border-t mt-4 pt-4" style="border-color:var(--mt-border)"><p class="text-xs text-gray-500 mb-2">Director options</p><div class="flex gap-2"><input id="csNewPassword" type="password" placeholder="New staff password" class="flex-1 border rounded-lg px-3 py-2 text-sm" autocomplete="off"><button id="csSetPasswordBtn" type="button" class="mt-btn-outline text-sm">Set/change password</button></div><p id="csSetMsg" class="text-sm mt-2"></p></div>` : ''}
+  </div>`;
+  const input = document.getElementById('csPassword');
+  const tryUnlock = async () => {
+    const error = document.getElementById('csGateError');
+    if (!input.value) { error.textContent = 'Enter the staff password.'; return; }
+    const { data, error: rpcError } = await sb.rpc('verify_company_staff_password', { p_company_id: myProfile.company_id, p_password: input.value });
+    if (rpcError) { error.textContent = rpcError.message; return; }
+    if (data === true || (data && data.ok)) { companyStaffUnlocked = true; renderExecutive(el); return; }
+    error.textContent = 'That password is not correct.';
+  };
+  document.getElementById('csUnlockBtn').onclick = tryUnlock;
+  input.onkeydown = e => { if (e.key === 'Enter') tryUnlock(); };
+  const setBtn = document.getElementById('csSetPasswordBtn');
+  if (setBtn) setBtn.onclick = async () => {
+    const msg = document.getElementById('csSetMsg');
+    const pw = document.getElementById('csNewPassword').value;
+    if (!pw) { msg.className = 'text-sm mt-2 text-red-600'; msg.textContent = 'Type a new password first.'; return; }
+    const { error } = await sb.rpc('set_company_staff_password', { p_company_id: myProfile.company_id, p_password: pw });
+    msg.className = `text-sm mt-2 ${error ? 'text-red-600' : 'text-green-700'}`;
+    msg.textContent = error ? error.message : 'Staff password updated.';
+  };
+}
+
 async function renderExecutive(el) {
-  if (!['owner', 'executive_director'].includes(myProfile.role)) {
-    el.innerHTML = `<div class="mt-card p-6 text-center"><p class="text-gray-500">This area is for company directors only.</p></div>`;
-    return;
-  }
+  if (!companyStaffUnlocked) return renderCompanyStaffGate(el);
   if (execSubTab === 'approvals') return renderExecApprovals(el);
   if (execSubTab === 'reports') return renderExecReports(el);
+  if (execSubTab === 'access' && ['owner', 'executive_director'].includes(myProfile.role)) return renderSectionAccess(el);
+  if (execSubTab === 'password' && ['owner', 'executive_director'].includes(myProfile.role)) return renderStaffPassword(el);
   if (execSubTab === 'leave') {
     el.innerHTML = `${execSubTabsHtml()}<div id="execContent"></div>`;
     wireExecSubTabs(el);
@@ -2225,6 +2262,72 @@ async function renderExecutive(el) {
   }
   execSubTab = 'overview';
   return renderExecOverview(el);
+}
+
+function renderStaffPassword(el) {
+  el.innerHTML = `${execSubTabsHtml()}<div id="execContent"><div class="mt-card p-5 max-w-md mt-fade-in">
+    <h2 class="font-medium mb-1">Set/change staff password</h2>
+    <p class="text-sm text-gray-500 mb-3">This is the shared password staff use to open the Company Staff area.</p>
+    <div class="flex gap-2"><input id="staffPwInput" type="password" placeholder="New password" class="flex-1 border rounded-lg px-3 py-2 text-sm" autocomplete="off"><button id="staffPwSave" type="button" class="mt-btn-primary text-sm">Save</button></div>
+    <p id="staffPwMsg" class="text-sm mt-2"></p>
+  </div></div>`;
+  wireExecSubTabs(el);
+  document.getElementById('staffPwSave').onclick = async () => {
+    const msg = document.getElementById('staffPwMsg');
+    const pw = document.getElementById('staffPwInput').value;
+    if (!pw) { msg.className = 'text-sm mt-2 text-red-600'; msg.textContent = 'Type a password first.'; return; }
+    const { error } = await sb.rpc('set_company_staff_password', { p_company_id: myProfile.company_id, p_password: pw });
+    msg.className = `text-sm mt-2 ${error ? 'text-red-600' : 'text-green-700'}`;
+    msg.textContent = error ? error.message : 'Staff password updated.';
+  };
+}
+
+async function renderSectionAccess(el) {
+  el.innerHTML = `${execSubTabsHtml()}<div id="execContent"><div class="mt-card p-5 mt-fade-in"><p class="text-gray-400 text-sm">Loading…</p></div></div>`;
+  wireExecSubTabs(el);
+  const content = document.getElementById('execContent');
+  const { data, error } = await sb.rpc('list_staff_section_access', { p_company_id: myProfile.company_id });
+  if (error) { content.innerHTML = `<div class="mt-card p-5"><p class="text-red-600 text-sm">${escapeHtml(error.message)}</p></div>`; return; }
+  content.innerHTML = `<div class="mt-card p-5 mt-fade-in">
+    <h2 class="font-medium mb-1">Who can see what</h2>
+    <p class="text-sm text-gray-500 mb-4">Uncheck a box to hide that section from that staff member. Checked means they can see it.</p>
+    <div class="overflow-x-auto">${sectionAccessTableHtml(data)}</div>
+    <p id="accessMsg" class="text-sm mt-3"></p>
+  </div>`;
+  content.querySelectorAll('.accessCheck').forEach(box => {
+    box.onchange = async () => {
+      const msg = document.getElementById('accessMsg');
+      const { error: rpcError } = await sb.rpc('set_staff_section_access', { p_admin_user_id: box.dataset.adminUser, p_section_code: box.dataset.section, p_allowed: box.checked });
+      msg.className = `text-sm mt-3 ${rpcError ? 'text-red-600' : 'text-green-700'}`;
+      msg.textContent = rpcError ? rpcError.message : 'Saved.';
+      if (rpcError) box.checked = !box.checked;
+    };
+  });
+}
+
+function sectionAccessTableHtml(data) {
+  const rows = Array.isArray(data) ? data : [];
+  const staffMap = new Map();
+  const sections = [];
+  rows.forEach(row => {
+    const staffId = row.admin_user_id || row.staff_id || row.user_id || row.id;
+    const name = row.full_name || row.staff_name || row.name || 'Staff member';
+    if (!staffMap.has(staffId)) staffMap.set(staffId, { name, access: {} });
+    const record = staffMap.get(staffId);
+    if (row.sections && typeof row.sections === 'object' && !Array.isArray(row.sections)) {
+      Object.entries(row.sections).forEach(([code, allowed]) => { record.access[code] = !!allowed; if (!sections.includes(code)) sections.push(code); });
+    } else if (Array.isArray(row.sections)) {
+      row.sections.forEach(s => { const code = s.section_code || s.code; record.access[code] = s.has_access ?? s.allowed ?? s.can_access ?? true; if (!sections.includes(code)) sections.push(code); });
+    } else if (row.section_code) {
+      record.access[row.section_code] = row.has_access ?? row.allowed ?? row.can_access ?? true;
+      if (!sections.includes(row.section_code)) sections.push(row.section_code);
+    }
+  });
+  if (!staffMap.size) return '<p class="text-gray-400 text-sm">No staff found.</p>';
+  const label = code => code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return `<table class="w-full mt-table text-sm"><thead><tr><th>Staff member</th>${sections.map(s => `<th>${escapeHtml(label(s))}</th>`).join('')}</tr></thead><tbody>
+    ${[...staffMap.entries()].map(([staffId, record]) => `<tr><td class="font-medium">${escapeHtml(record.name)}</td>${sections.map(s => `<td><input type="checkbox" class="accessCheck" data-admin-user="${staffId}" data-section="${escapeHtml(s)}" ${record.access[s] !== false ? 'checked' : ''}></td>`).join('')}</tr>`).join('')}
+  </tbody></table>`;
 }
 
 function execMoney(value, currency = 'GHS') {

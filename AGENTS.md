@@ -141,11 +141,15 @@ This document is written for Watchguard (and future AI agents) so they can under
 - "not found / already reviewed" → another admin already actioned it; list refreshes anyway.
 - Empty staff names → RPC row field may differ (`staff_name`/`full_name`/`name` all checked).
 
-### Executive Tab (`renderExecutive`)
+### Company Staff Tab (`renderExecutive`, tab id `executive`)
 **Structure**
-- Top-level tab shown only to `owner` and `executive_director` roles; sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**, **Leave**.
-- Deep links: `admin.html?tab=executive&sub=overview|approvals|reports`.
+- Top-level tab labeled **Company Staff**, shown to every logged-in admin user — but gated behind the shared staff password. `renderCompanyStaffGate` asks for it; `verify_company_staff_password(p_company_id, p_password)` must return `true` before any content renders. The unlock is held in memory only (`companyStaffUnlocked`) — a page refresh re-locks it.
+- Owners and executive directors additionally see a **Set/change password** form on the gate and a **🔑 Password** sub-tab inside, both calling `set_company_staff_password(p_company_id, p_password)`.
+- Sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**, **Leave**, plus owner/executive_director-only **🔓 Section Access** and **🔑 Password**.
+- Deep links: `admin.html?tab=executive&sub=overview|approvals|reports|leave|access|password` — the gate still runs first.
 - All data comes from RPCs only — no direct table queries in this section.
+
+**Section Access** (`renderSectionAccess`) — `list_staff_section_access(p_company_id)` rendered as a staff × sections checkbox grid ("Uncheck a box to hide that section from that staff member"). Toggling calls `set_staff_section_access(p_admin_user_id, p_section_code, p_allowed)`; failures revert the checkbox and show the error. Row normalization (`sectionAccessTableHtml`) accepts flat `section_code` rows, a `sections` object, or a `sections` array. The same grid also exists for Metosync staff at **Registry → 🔐 Access** in `platform.html` (`renderRegistryAccess`, company picker via `platform_list_companies`).
 
 **Overview** — `executive_dashboard_summary(p_company_id)` → plain-language cards: staff checked in today (`staff.checked_in_today`/`staff.total_active`), payroll still owed (`payroll.pending_amount`), next payroll period (`payroll.next_period_start`/`next_period_end`), payments waiting (`payments.pending_amount`), and a tappable "Needs your attention" card (`approvals_needed.critical` + `.warning`) that jumps to Approvals.
 
@@ -154,7 +158,9 @@ This document is written for Watchguard (and future AI agents) so they can under
 **Reports** — date range + Attendance/Payroll/Payments/Staff selector → `report_attendance_summary` / `report_payroll_summary` / `report_payments_summary` (all take `p_start`/`p_end`) / `report_staff_summary` (snapshot, `p_company_id` only, no dates).
 
 **What can go wrong**
-- Tab missing → caller's `admin_users.role` isn't `owner`/`executive_director`. The `executive_director` portfolio exists but has no `role_permissions` rows, so `can()` returns false for it — the tab is gated on `myProfile.role`, not `can()`.
+- Gate never opens → `verify_company_staff_password` missing/false; if no password was ever set, a director must set one first (gate's director form or the 🔑 Password tab).
+- Access grid empty or checkbox reverts → `list_staff_section_access`/`set_staff_section_access` missing or erroring; check the red message under the grid.
+- Section Access/Password sub-tabs missing → caller's `admin_users.role` isn't `owner`/`executive_director`.
 - Overview error "function does not exist" → `executive_dashboard_summary` was built server-side only; confirm it's deployed and refresh the schema cache.
 - Approve/Reject returns "not found or not open" → another admin already resolved the finding; the list refreshes after each action.
 - Empty cards / `—` values → the RPC's JSON keys differ; the view reads `staff.*`, `payroll.*`, `payments.*`, `approvals_needed.*` (with top-level `next_period_*` fallback).
