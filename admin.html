@@ -420,13 +420,14 @@ function payrollPreviewHtml(preview, currency) {
 }
 
 function payrollSubTabsHtml() {
+  const tab = (id, label) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`;
   return `<div class="payroll-subtabs flex flex-wrap gap-1 mt-card p-1">
-    <a href="payroll.html" class="mt-tab">General Payroll</a>
-    <a href="taxes.html" class="mt-tab">Taxes &amp; Incentives</a>
-    <a href="review.html" class="mt-tab">Final Review</a>
-    <button type="button" class="mt-tab ${payrollSubTab === 'quickpay' ? 'active' : ''}" data-payroll-tab="quickpay">💸 Quick Pay</button>
-    <button type="button" class="mt-tab ${payrollSubTab === 'history' ? 'active' : ''}" data-payroll-tab="history">📋 Payroll History</button>
-    <button type="button" class="mt-tab ${payrollSubTab === 'quitpay' ? 'active' : ''}" data-payroll-tab="quitpay">🚪 Quit Pay</button>
+    ${tab('general', '01 General Payroll')}
+    ${tab('taxes', '02 Taxes &amp; Incentives')}
+    ${tab('review', '03 Final Review')}
+    ${tab('quickpay', '💸 Quick Pay')}
+    ${tab('history', '📋 Payroll History')}
+    ${tab('quitpay', '🚪 Quit Pay')}
   </div>`;
 }
 
@@ -435,7 +436,7 @@ async function loadPayrollContext() {
   if (periodError) throw periodError;
   const period = periods && periods[0];
   const [{ data: staff, error: staffError }, { data: entries, error: entryError }, { data: deductions, error: deductionError }] = await Promise.all([
-    sb.from('staff').select('id, full_name, phone, currency, weekday_rate, weekend_rate, monthly_salary, sites(name)').eq('company_id', myProfile.company_id).order('full_name'),
+    sb.from('staff').select('id, full_name, phone, staff_code, currency, weekday_rate, weekend_rate, monthly_salary, sites(name)').eq('company_id', myProfile.company_id).order('full_name'),
     period ? sb.from('payroll_entries').select('*').eq('payroll_period_id', period.id) : Promise.resolve({ data: [] }),
     sb.from('deduction_types').select('*').or(`company_id.eq.${myProfile.company_id},company_id.is.null`).order('name')
   ]);
@@ -448,14 +449,39 @@ async function renderPayroll(el) {
   try { payrollState = { ...payrollState, ...await loadPayrollContext(), previews: new Map() }; } catch (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
 
   let content = '';
-  if (payrollSubTab === 'history') content = payrollHistoryHtml();
+  if (payrollSubTab === 'general') content = payrollState.period ? payrollGeneralHtml() : payrollStartPeriodHtml();
+  else if (payrollSubTab === 'taxes') content = payrollTaxesHtml();
+  else if (payrollSubTab === 'review') content = payrollReviewHtml();
+  else if (payrollSubTab === 'quickpay') content = payrollQuickPayHtml();
+  else if (payrollSubTab === 'history') content = payrollHistoryHtml();
   else if (payrollSubTab === 'quitpay') content = quitPayHtml();
-  else { payrollSubTab = 'quickpay'; content = payrollQuickPayHtml(); }
-  el.innerHTML = `${payrollSubTabsHtml()}<div class="payroll-content">${content}</div>`;
+  else { payrollSubTab = 'general'; content = payrollState.period ? payrollGeneralHtml() : payrollStartPeriodHtml(); }
+  el.innerHTML = `<div class="payroll-content mt-fade-in">${content}</div>${payrollSubTabsHtml()}`;
   wirePayrollSubTabs(el);
+  if (payrollSubTab === 'general') { if (payrollState.period) wireGeneralPayroll(el); else wireStartPayrollPeriod(el); }
+  if (payrollSubTab === 'taxes') { wireTaxesPayroll(el); loadPayeBreakdown(); }
+  if (payrollSubTab === 'review') wirePayrollReview(el);
   if (payrollSubTab === 'quickpay') wireQuickPay(el);
   if (payrollSubTab === 'history') wirePayrollHistory(el);
   if (payrollSubTab === 'quitpay') wireQuitPay(el);
+}
+
+function payrollStartPeriodHtml() {
+  return `<div class="mt-card p-5 mt-fade-in"><h2 class="font-medium mb-1">Add New Payroll Run</h2><p class="text-xs text-gray-500 mb-3">No open payroll period. Pick the dates this run covers to start one.</p><div class="grid grid-cols-2 gap-2 mb-3"><label class="text-sm">Period Start<input id="payrollPeriodStart" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label><label class="text-sm">Period End<input id="payrollPeriodEnd" type="date" class="block w-full border rounded-lg px-3 py-2 mt-1 text-sm"></label></div><p id="payrollPeriodError" class="text-red-600 text-sm mb-2"></p><button id="startPayrollPeriodBtn" type="button" class="mt-btn-primary">Start Payroll Run</button></div>`;
+}
+
+function wireStartPayrollPeriod(el) {
+  const btn = document.getElementById('startPayrollPeriodBtn');
+  if (!btn) return;
+  btn.onclick = async () => {
+    const start = document.getElementById('payrollPeriodStart').value;
+    const end = document.getElementById('payrollPeriodEnd').value;
+    const errorElement = document.getElementById('payrollPeriodError');
+    if (!start || !end) { errorElement.textContent = 'Choose a start and end date.'; return; }
+    const { error } = await sb.rpc('create_payroll_period', { p_period_start: start, p_period_end: end });
+    if (error) { errorElement.textContent = error.message; return; }
+    renderPayroll(el);
+  };
 }
 
 let payrollHistoryView = 'list';
@@ -620,8 +646,14 @@ function wirePayrollSubTabs(el) {
 
 function payrollGeneralHtml() {
   const entryByStaff = new Map(payrollState.entries.map(entry => [entry.staff_id, entry]));
-  const rows = payrollState.staff.map(staff => { const entry = entryByStaff.get(staff.id) || {}; return `<tr class="payrollGeneralRow" data-staff-id="${staff.id}" data-currency="${staff.currency || ''}"><td><input type="checkbox" class="payrollSelect"></td><td>${staff.full_name}<span class="block text-xs text-gray-500">${staff.currency || ''}</span></td><td><input class="weekdayDays w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${entry.weekday_days || 0}" readonly></td><td><input class="weekendDays w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${entry.weekend_days || 0}" readonly></td><td class="payrollGross">${entry.gross_pay !== undefined ? payrollMoney(entry.gross_pay, staff.currency) : '—'}</td><td class="payrollDeductions">${entry.total_deductions !== undefined ? payrollMoney(entry.total_deductions, staff.currency) : '—'}</td><td class="payrollNet">${entry.net_pay !== undefined ? payrollMoney(entry.net_pay, staff.currency) : '—'}</td><td><button type="button" class="editPayrollBtn mt-icon-btn edit" title="Edit days">✎</button><button type="button" class="deletePayrollBtn mt-icon-btn delete" title="Delete entry">🗑</button><span class="payrollRowMessage"></span></td></tr>`; }).join('');
-  return `<div class="mt-card p-5"><div class="flex flex-wrap gap-2 mb-3"><button id="applyAllPayrollBtn" type="button" class="mt-btn-outline">Apply All</button><button id="saveSelectedPayrollBtn" type="button" class="mt-btn-primary">Save</button><button id="undoPayrollBtn" type="button" class="mt-btn-outline">Undo</button><button id="payAllBtn" type="button" class="mt-btn-primary">Pay All</button></div><table class="w-full mt-table"><thead><tr><th><input id="selectAllPayroll" type="checkbox"></th><th>Staff Name</th><th>Weekday Days</th><th>Weekend Days</th><th>Total Pay</th><th>Deductions</th><th>Net Pay</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="text-gray-400">No staff yet.</td></tr>'}</tbody></table><div class="flex flex-wrap gap-2 mt-4"><button id="exportPayrollBtn" type="button" class="mt-btn-outline">⬇️ Export CSV</button><button id="emailPayrollBtn" type="button" class="mt-btn-outline">Export via Email</button><span class="text-xs text-gray-500 self-center">Pay All records payment outside the system.</span></div></div>`;
+  const periodLabel = payrollState.period ? `${formatPayrollDate(payrollState.period.period_start)} – ${formatPayrollDate(payrollState.period.period_end)}` : '';
+  const rows = payrollState.staff.map(staff => { const entry = entryByStaff.get(staff.id) || {}; return `<tr class="payrollGeneralRow" data-staff-id="${staff.id}" data-currency="${staff.currency || ''}"><td><input type="checkbox" class="payrollSelect"></td><td>${staff.full_name}<span class="block text-xs text-gray-500">${staff.staff_code || ''}${staff.currency ? ` · ${staff.currency}` : ''}</span></td><td><input class="weekdayDays w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${entry.weekday_days || 0}" readonly></td><td><input class="weekendDays w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${entry.weekend_days || 0}" readonly></td><td class="payrollGross">${entry.gross_pay !== undefined ? payrollMoney(entry.gross_pay, staff.currency) : '—'}</td><td class="payrollDeductions">${entry.total_deductions !== undefined ? payrollMoney(entry.total_deductions, staff.currency) : '—'}</td><td class="payrollNet">${entry.net_pay !== undefined ? payrollMoney(entry.net_pay, staff.currency) : '—'}</td><td><button type="button" class="editPayrollBtn mt-icon-btn edit" title="Edit days">✎</button><button type="button" class="deletePayrollBtn mt-icon-btn delete" title="Delete entry">🗑</button><span class="payrollRowMessage"></span></td></tr>`; }).join('');
+  return `<div class="mt-card p-5">
+    <div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-medium">General Payroll</h2><p class="text-xs text-gray-500">Duration: ${periodLabel}</p></div><input id="payrollSearch" type="search" placeholder="🔍 Search staff…" class="border rounded-lg px-3 py-2 text-sm"></div>
+    <div class="flex flex-wrap gap-2 mb-3"><button id="applyAllPayrollBtn" type="button" class="mt-btn-outline">Apply All</button><button id="saveSelectedPayrollBtn" type="button" class="mt-btn-primary">Save</button><button id="deleteSelectedPayrollBtn" type="button" class="mt-btn-outline">Delete Selected</button><button id="undoPayrollBtn" type="button" class="mt-btn-outline">Undo</button><button id="payAllBtn" type="button" class="mt-btn-primary">Pay All</button><button id="newPayrollRunBtn" type="button" class="mt-btn-outline">+ New Payroll Run</button></div>
+    <div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th><input id="selectAllPayroll" type="checkbox" title="Select all staff"></th><th>Staff Name</th><th>Weekday Days</th><th>Weekend Days</th><th>Total Pay</th><th>Deductions</th><th>Net Pay</th><th>Actions</th></tr></thead><tbody id="payrollTableBody">${rows || '<tr><td colspan="8" class="text-gray-400">No staff yet.</td></tr>'}</tbody></table></div>
+    <div class="flex flex-wrap gap-2 mt-4"><label class="mt-btn-outline cursor-pointer">📥 Import Staff<input id="importPayrollFile" type="file" accept=".csv" class="hidden"></label><button id="exportPayrollBtn" type="button" class="mt-btn-outline">⬇️ Download Excel</button><button id="pdfPayrollBtn" type="button" class="mt-btn-outline">📄 Download PDF</button><button id="printPayrollBtn" type="button" class="mt-btn-outline">🖨 Print</button><button id="emailPayrollBtn" type="button" class="mt-btn-outline">✉️ Export via Email</button></div>
+  </div>`;
 }
 
 async function previewPayrollRow(row) {
@@ -713,8 +745,14 @@ async function wireGeneralPayroll(el) {
   });
   document.getElementById('applyAllPayrollBtn').onclick = async () => { await Promise.all(checks().filter(check => check.checked).map(check => previewPayrollRow(check.closest('tr')))); };
   document.getElementById('saveSelectedPayrollBtn').onclick = async () => { for (const check of checks().filter(item => item.checked)) { const row = check.closest('tr'); const { error } = await sb.rpc('save_payroll_entry', { p_payroll_period_id: payrollState.period.id, p_staff_id: row.dataset.staffId, p_weekday_days: Number(row.querySelector('.weekdayDays').value || 0), p_weekend_days: Number(row.querySelector('.weekendDays').value || 0) }); row.querySelector('.payrollRowMessage').textContent = error ? error.message : ' ✓ Saved'; } };
+  document.getElementById('deleteSelectedPayrollBtn').onclick = async () => { for (const check of checks().filter(item => item.checked)) { const row = check.closest('tr'); const entry = payrollState.entries.find(item => item.staff_id === row.dataset.staffId); if (!entry) continue; const { error } = await sb.rpc('delete_payroll_entry', { p_entry_id: entry.id }); if (error) row.querySelector('.payrollRowMessage').textContent = ` ${error.message}`; } renderPayroll(el); };
   document.getElementById('undoPayrollBtn').onclick = () => renderPayroll(el);
+  document.getElementById('newPayrollRunBtn').onclick = () => { const content = el.querySelector('.payroll-content'); content.innerHTML = payrollStartPeriodHtml(); wireStartPayrollPeriod(el); };
+  document.getElementById('payrollSearch').oninput = e => { const term = e.target.value.toLowerCase(); rows.forEach(row => { row.style.display = row.children[1].innerText.toLowerCase().includes(term) ? '' : 'none'; }); };
+  document.getElementById('importPayrollFile').onchange = async e => { const file = e.target.files[0]; if (!file) return; const text = await file.text(); const byCode = new Map(payrollState.staff.map(staff => [String(staff.staff_code || '').toLowerCase(), staff.id])); text.split(/\r?\n/).slice(1).forEach(line => { const [code, weekday, weekend] = line.split(',').map(cell => cell.trim()); const staffId = byCode.get((code || '').toLowerCase()); const row = staffId && rows.find(item => item.dataset.staffId === staffId); if (row) { row.querySelector('.weekdayDays').value = Number(weekday || 0); row.querySelector('.weekendDays').value = Number(weekend || 0); row.querySelectorAll('input[type="number"]').forEach(input => { input.readOnly = false; }); previewPayrollRow(row); } }); };
   document.getElementById('exportPayrollBtn').onclick = () => exportPayrollCsv(rows);
+  document.getElementById('pdfPayrollBtn').onclick = () => window.print();
+  document.getElementById('printPayrollBtn').onclick = () => window.print();
   document.getElementById('emailPayrollBtn').onclick = () => emailPayrollSummary(rows);
   document.getElementById('payAllBtn').onclick = () => showPayrollPaymentForm(el, checks().filter(check => check.checked).map(check => check.closest('tr')).filter(row => payrollState.entries.some(entry => entry.staff_id === row.dataset.staffId)));
 }
@@ -733,7 +771,88 @@ async function wireIndividualPayroll(el) {
 
 function payrollTaxesHtml() {
   const cards = payrollState.deductions.map(item => `<div class="border rounded-xl p-3"><p class="font-medium">${item.name}</p><p class="text-xs text-gray-500">${item.category || ''} · ${item.calc_method || item.calculation_method || ''}</p></div>`).join('');
-  return `<div class="mt-card p-5 mb-4"><h2 class="font-medium mb-3">Add New Tax/Allowance</h2><div class="grid grid-cols-2 gap-2"><input id="deductionName" placeholder="Name" class="border rounded-lg px-3 py-2 text-sm"><select id="deductionCategory" class="border rounded-lg px-3 py-2 text-sm"><option value="deduction">Deduction</option><option value="allowance">Allowance</option><option value="tax">Tax</option></select><select id="deductionMethod" class="border rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Amount</option><option value="percentage">Percentage</option><option value="tax_band">Tax Band</option></select><input id="deductionAmount" type="number" step="0.01" placeholder="Amount" class="border rounded-lg px-3 py-2 text-sm"></div><p id="deductionError" class="text-red-600 text-sm mt-2"></p><button id="addDeductionBtn" type="button" class="mt-btn-primary mt-3">Add New Tax/Allowance</button></div><div class="mt-card p-5 mb-4"><h2 class="font-medium mb-3">Available Taxes &amp; Incentives</h2><div class="grid gap-2">${cards || '<p class="text-gray-400">No deduction types found.</p>'}</div></div><div class="mt-card p-5"><h2 class="font-medium mb-3">Apply to Staff</h2><select id="applyDeductionType" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${payrollState.deductions.map(item => `<option value="${item.id}">${item.name}</option>`).join('')}</select><div class="grid gap-1 mb-3">${payrollState.staff.map(staff => `<label class="text-sm"><input type="checkbox" class="deductionStaff" value="${staff.id}"> ${staff.full_name}</label>`).join('')}</div><p id="applyDeductionError" class="text-red-600 text-sm"></p><button id="applyDeductionBtn" type="button" class="mt-btn-primary">Apply</button></div>`;
+  return `<div class="mt-card p-5 mb-4"><h2 class="font-medium mb-3">Add New Tax/Allowance</h2><div class="grid grid-cols-2 gap-2"><input id="deductionName" placeholder="Name" class="border rounded-lg px-3 py-2 text-sm"><select id="deductionCategory" class="border rounded-lg px-3 py-2 text-sm"><option value="deduction">Deduction</option><option value="allowance">Allowance</option><option value="tax">Tax</option></select><select id="deductionMethod" class="border rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Amount</option><option value="percentage">Percentage</option><option value="tax_band">Tax Band</option></select><input id="deductionAmount" type="number" step="0.01" placeholder="Amount" class="border rounded-lg px-3 py-2 text-sm"></div><p id="deductionError" class="text-red-600 text-sm mt-2"></p><button id="addDeductionBtn" type="button" class="mt-btn-primary mt-3">Add New Tax/Allowance</button></div><div class="mt-card p-5 mb-4"><h2 class="font-medium mb-3">Available Taxes &amp; Incentives</h2><div class="grid gap-2">${cards || '<p class="text-gray-400">No deduction types found.</p>'}</div></div><div class="mt-card p-5"><h2 class="font-medium mb-3">Apply to Staff</h2><select id="applyDeductionType" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${payrollState.deductions.map(item => `<option value="${item.id}">${item.name}</option>`).join('')}</select><div class="grid gap-1 mb-3">${payrollState.staff.map(staff => `<label class="text-sm"><input type="checkbox" class="deductionStaff" value="${staff.id}"> ${staff.full_name}</label>`).join('')}</div><p id="applyDeductionError" class="text-red-600 text-sm"></p><button id="applyDeductionBtn" type="button" class="mt-btn-primary">Apply</button></div><div class="mt-card p-5"><h2 class="font-medium mb-1">Ghana PAYE &amp; SSNIT — this period</h2><p class="text-xs text-gray-500 mb-3">Official rates applied per person. These numbers carry through to Final Review.</p><div id="payeCards" class="grid gap-2"><p class="text-gray-400 text-sm">Calculating…</p></div></div>`;
+}
+
+async function loadPayeBreakdown() {
+  const box = document.getElementById('payeCards');
+  if (!box) return;
+  const year = new Date().getFullYear();
+  const rows = await Promise.all(payrollState.staff.map(async person => {
+    const gross = Number(person.monthly_salary || person.weekday_rate || 0);
+    const { data, error } = await sb.rpc('calculate_ghana_payroll_tax', { p_gross_monthly_salary: gross, p_year: year });
+    if (error) return { person, gross, error: error.message };
+    const r = Array.isArray(data) ? data[0] : data;
+    return {
+      person, gross,
+      ssnit: payrollValue(r, 'ssnit_employee', 'ssnit', 'employee_ssnit') ?? 0,
+      paye: payrollValue(r, 'paye', 'paye_tax', 'income_tax') ?? 0,
+      net: payrollValue(r, 'net_pay', 'net', 'net_salary') ?? 0
+    };
+  }));
+  box.innerHTML = rows.map(row => row.error
+    ? `<div class="border rounded-xl p-3"><p class="font-medium">${escapeHtml(row.person.full_name)}</p><p class="text-xs text-red-600">${escapeHtml(row.error)}</p></div>`
+    : `<div class="border rounded-xl p-3"><p class="font-medium">${escapeHtml(row.person.full_name)}</p><p class="text-xs text-gray-500">Gross: ${payrollMoney(row.gross, row.person.currency)}</p><p class="text-sm mt-1">SSNIT: <strong>${payrollMoney(row.ssnit, row.person.currency)}</strong> · Tax (PAYE): <strong>${payrollMoney(row.paye, row.person.currency)}</strong> · Net pay: <strong>${payrollMoney(row.net, row.person.currency)}</strong></p></div>`
+  ).join('') || '<p class="text-gray-400 text-sm">No staff yet.</p>';
+  localStorage.setItem('metosync_payroll_breakdown', JSON.stringify({
+    companyCode: myCompany.org_code || '',
+    generatedAt: new Date().toISOString(),
+    rows: rows.filter(row => !row.error).map(row => ({ id: row.person.id, name: row.person.full_name, code: row.person.staff_code || '', gross: row.gross, ssnit: row.ssnit, paye: row.paye, net: row.net, currency: row.person.currency || 'GHS' }))
+  }));
+}
+
+function payrollReviewRows() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('metosync_payroll_breakdown') || 'null'); } catch (e) { saved = null; }
+  if (saved && Array.isArray(saved.rows) && saved.rows.length && (!saved.companyCode || saved.companyCode === (myCompany.org_code || ''))) {
+    return saved.rows.map(row => ({ name: row.name, code: row.code || '', gross: Number(row.gross || 0), tax: Number(row.ssnit || 0) + Number(row.paye || 0), net: Number(row.net || 0), currency: row.currency || 'GHS' }));
+  }
+  const staffById = new Map(payrollState.staff.map(staff => [staff.id, staff]));
+  return payrollState.entries.map(entry => {
+    const staff = staffById.get(entry.staff_id) || {};
+    return { name: staff.full_name || 'Unknown', code: staff.staff_code || '', gross: Number(entry.gross_pay || 0), tax: Number(entry.total_deductions || 0), net: Number(entry.net_pay || 0), currency: staff.currency || 'GHS' };
+  });
+}
+
+function payrollReviewHtml() {
+  const rows = payrollReviewRows();
+  const total = rows.reduce((acc, row) => ({ gross: acc.gross + row.gross, tax: acc.tax + row.tax, net: acc.net + row.net }), { gross: 0, tax: 0, net: 0 });
+  const currency = rows[0] ? rows[0].currency : 'GHS';
+  const card = (label, value) => `<div class="rounded-lg p-3" style="background:#f4f7f5"><p class="text-xs text-gray-500">${label}</p><p class="font-bold">${value}</p></div>`;
+  const periodLabel = payrollState.period ? `${formatPayrollDate(payrollState.period.period_start)} – ${formatPayrollDate(payrollState.period.period_end)}` : 'No open period';
+  return `<div class="mt-card p-5">
+    <div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-medium">Final Review</h2><p class="text-xs text-gray-500">Period: ${periodLabel}</p></div>
+    <div class="flex flex-wrap gap-2"><button id="reviewApproveBtn" type="button" class="mt-btn-outline">✔ Approve</button><button id="reviewPayBtn" type="button" class="mt-btn-primary">💸 Pay</button><button id="reviewLockBtn" type="button" class="mt-btn-outline">🔒 Lock period</button></div></div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">${card('Staff on this run', rows.length)}${card('Gross pay', payrollMoney(total.gross, currency))}${card('Tax &amp; deductions', payrollMoney(total.tax, currency))}${card('Net pay', payrollMoney(total.net, currency))}</div>
+    <div class="overflow-x-auto"><table class="w-full mt-table"><thead><tr><th>Staff Name</th><th>Code</th><th>Gross Earnings</th><th>Tax &amp; Incentives</th><th>Net Pay</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.code || '—')}</td><td>${payrollMoney(row.gross, row.currency)}</td><td>${payrollMoney(row.tax, row.currency)}</td><td>${payrollMoney(row.net, row.currency)}</td></tr>`).join('') || '<tr><td colspan="5" class="text-gray-400">No payroll data yet. Run General Payroll first, then Taxes &amp; Incentives.</td></tr>'}</tbody></table></div>
+    <p id="reviewMessage" class="text-sm mt-3"></p>
+  </div>`;
+}
+
+function wirePayrollReview(el) {
+  const message = document.getElementById('reviewMessage');
+  const showMessage = (text, isError) => { message.textContent = text; message.className = `text-sm mt-3 ${isError ? 'text-red-600' : 'text-green-700'}`; };
+  const setPeriodStatus = async status => {
+    if (!payrollState.period) { showMessage('No open payroll period.', true); return; }
+    const { error } = await sb.from('payroll_periods').update({ status }).eq('id', payrollState.period.id);
+    if (error) { showMessage(error.message, true); return; }
+    showMessage(status === 'approved' ? 'Payroll approved.' : 'Period locked.', false);
+    renderPayroll(el);
+  };
+  document.getElementById('reviewApproveBtn').onclick = () => setPeriodStatus('approved');
+  document.getElementById('reviewLockBtn').onclick = () => setPeriodStatus('locked');
+  document.getElementById('reviewPayBtn').onclick = () => {
+    const entryIds = payrollState.entries.map(entry => entry.id);
+    if (!entryIds.length) { showMessage('No saved payroll entries to pay yet.', true); return; }
+    const form = document.createElement('div');
+    form.className = 'mt-card p-4 mt-4';
+    form.innerHTML = `<p class="font-medium mb-2">Record Payment</p><select id="paymentMethod" class="border rounded-lg px-3 py-2 text-sm mr-2"><option value="bank_transfer">Bank Transfer</option><option value="mobile_money">Mobile Money</option><option value="cash">Cash</option><option value="other">Other</option></select><input id="paymentReference" placeholder="Reference Number" class="border rounded-lg px-3 py-2 text-sm mr-2"><button id="confirmPayrollPayment" type="button" class="mt-btn-primary">Confirm</button>`;
+    el.querySelector('.payroll-content .mt-card').appendChild(form);
+    document.getElementById('confirmPayrollPayment').onclick = async () => {
+      const { error } = await sb.rpc('mark_payroll_entries_paid', { p_entry_ids: entryIds, p_method: document.getElementById('paymentMethod').value, p_reference: document.getElementById('paymentReference').value.trim() });
+      if (error) showMessage(error.message, true); else renderPayroll(el);
+    };
+  };
 }
 
 function wireTaxesPayroll(el) {
