@@ -180,6 +180,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 - **Payroll History** has nested tabs: **Payroll History** (period list) and **Reports** (range totals + list); both call `report_payroll_summary(p_company_id, p_start, p_end)`.
 - **Quit Pay** calls `staff_quit_settlement_preview(p_staff_id, p_last_working_date)` (pro-rated salary, leave entitled/taken/unused, leave payout, active deductions — all computed server-side), then `staff_process_quit_settlement(...)` with mode `direct` or `itemized`; it creates a `payment_requests` row and marks staff inactive automatically. Both live in `033_quit_pay.sql`.
 - Active sub-tab uses navy `#0d2a4d`; all payroll green was replaced with navy brand colors.
+- **Taxes & Incentives** (`taxes.html`) shows a per-staff Ghana PAYE/SSNIT breakdown card — `calculate_ghana_payroll_tax(p_gross_monthly_salary, p_year)` per staff member (gross = `monthly_salary || weekday_rate`). Rates are NEVER hardcoded in the frontend; they're Registry-editable (`tax_bands`/`ssnit_config` via `registry_set_tax_band`/`registry_set_ssnit_config`). Results are saved to `localStorage.metosync_payroll_breakdown` and displayed verbatim by Final Review (`review.html`) — review never recalculates.
 - General Payroll (`payrollGeneralHtml`) needs an open draft period; if none exists a Start New Payroll Period form is shown.
 - Quick Pay lets an admin pay a staff member directly without a payroll entry.
 

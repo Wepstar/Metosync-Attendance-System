@@ -212,9 +212,16 @@ Check items off as they're completed. This file is the actual answer to
       already exists and is already platform-admin-gated (fixed in the
       original audit) — Metosync Registry staff generating invite codes on
       behalf of organizations needs zero new backend, just a Registry UI
-- [ ] Assumption flagged to user, not yet confirmed: Registry-generated
-      invites are additive alongside company-owner self-service
-      (`admin_create_invite`), not a replacement — revisit if wrong
+- [x] **Decided**: company owners lose self-invite entirely. Revoked
+      `admin_create_invite`'s EXECUTE grant from anon/authenticated (not
+      just an internal check — the grant itself is gone, so it can't be
+      quietly re-enabled by a future frontend call). Confirmed only
+      service_role/postgres retain access. Team invites are now exclusively
+      a Registry/Metosync-staff action via `registry_admin_invite`.
+- [ ] Devin: the earlier "Invite team member" screen built for company
+      Admin should be REMOVED — that path no longer works and will error if
+      left in place. Only the Registry-side "Generate team invite" screen
+      (from the prior prompt) should exist going forward.
 - [ ] Devin: add Payments Summary to Executive's Reports tab; build a
       "Generate team invite" screen in Registry — prompt below
 
@@ -238,13 +245,33 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
         `admin_review_leave_request(p_request_id, p_decision, p_reason)`
         (approve/reject, logs to company_activity_log → visible in Registry,
         same pattern as the invite audit trail)
-  - [ ] Onboarding piece still not touched
-  - [ ] Devin: Leave tab in Administrator workspace — prompt below
+  - [x] Onboarding: confirmed zero new backend needed — `add_staff` (create
+        record, already logs to `staff_changes` for Registry visibility),
+        `admin_send_notification` (welcome message), and
+        `add_staff_custom_fields` (optional extra fields) already cover it
+  - [ ] Devin: build the Onboarding wizard — prompt below. **This closes out
+        every planned Administrator workspace item.**
 - [~] **Finance & Payroll Manager workspace** — in progress via Payroll menu buildout
   - [x] Backend: Quick Pay (final settlement) built; Payroll History backed
         by existing report_payroll_summary; Flutterwave removed
-  - [ ] Devin: menu fixes sent, not yet confirmed complete
-  - [ ] Tax compliance, budgets not yet touched
+  - [x] **Tax compliance built**: Ghana PAYE + SSNIT as Registry-editable
+        data (`tax_bands`, `ssnit_config` tables), not hardcoded logic —
+        `calculate_ghana_payroll_tax(p_gross_monthly_salary, p_year)`
+        returns SSNIT employee/employer, taxable income, PAYE, net pay.
+        2026 rates sourced via web search (multiple independent sources
+        agree) — **not pulled from GRA's primary gazette directly; verify
+        against GRA's actual publication or a tax advisor before this
+        touches real payroll.** Tested against a worked example, matches
+        exactly. `registry_set_tax_band`/`registry_set_ssnit_config` let
+        Metosync staff update rates via Registry when GRA revises them.
+  - [ ] Devin: surface this in the Taxes & Incentives step of the payroll
+        wizard — prompt below
+  - [ ] Budgets — not yet started, the one remaining Finance & Payroll item
+- [ ] Devin: **consolidate, don't duplicate** — the Admin header's "Reports
+      & Analytics" menu (Attendance by Date, Payroll Summary, Payments
+      Summary) uses the same three functions already specced for
+      Executive's Reports tab. Confirm Executive's version works, then
+      remove the Admin header version entirely — prompt below
 - [~] **Executive Director workspace** — backend started
   - [x] `executive_dashboard_summary(p_company_id)` built — one combined
         "at a glance" view (staff/attendance today, pending payroll,

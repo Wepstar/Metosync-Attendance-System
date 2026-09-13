@@ -35,6 +35,7 @@
 <div class="form-grid"><div class="field name-field"><label for="ruleName">Full Name</label><input id="ruleName" placeholder="e.g. SSNIT, Transport Allowance"></div><div class="field"><label for="ruleType">Category</label><select id="ruleType"><option value="deduction">Deductions</option><option value="allowance">Allowances</option><option value="overtime">Overtime</option><option value="bonus">Bonus</option></select></div><div class="field"><label>Calculation Type</label><div class="mode"><label><input type="radio" name="mode" value="percentage" checked> Percentage of gross pay</label><label><input type="radio" name="mode" value="fixed"> Flat rate / amount</label></div></div><div class="field"><label for="ruleValue">Enter percentage or fixed rate</label><input id="ruleValue" type="number" min="0" step="0.01" placeholder="e.g. 5 or 250"></div><div class="field add-field"><button class="btn primary" id="addRule" type="button">Add</button></div></div><p class="helper">Choose one calculation type. Percentage uses gross pay; flat rate uses the exact amount entered.</p><p class="message" id="ruleMessage" role="alert"></p></section>
 <section class="panel"><div class="section-toolbar"><div><h2 style="margin:0;font-size:18px">Added Taxes and Incentives</h2><p class="helper" style="padding:5px 0 0;margin:0">Select a rule to review, edit, or delete it before applying.</p></div><div class="actions"><button class="btn danger" id="deleteRules" type="button">Delete Selected</button><button class="btn" id="undoRules" type="button">Undo</button><button class="btn dark" id="saveRules" type="button">Save</button><button class="btn" onclick="toast('Email export prepared')" type="button">Export via Email</button><button class="btn" onclick="toast('PDF export prepared')" type="button">Download PDF</button><button class="btn" onclick="toast('Excel export prepared')" type="button">Download Excel</button><button class="btn" onclick="window.print()" type="button">Print</button></div></div><div class="tax-list" id="ruleList"><p class="empty">Loading rules...</p></div></section>
 <section class="panel"><div class="section-toolbar"><div><h2 style="margin:0;font-size:18px">Apply to Selected Staff</h2><p class="helper" style="padding:5px 0 0;margin:0">Select staff below. Calculations affect selected staff only.</p></div><div class="actions"><button class="btn" id="selectAll" type="button">Select All</button><button class="btn primary" id="applySelected" type="button">Apply to Selected</button></div></div><div class="table-wrap"><table class="table"><thead><tr><th><input id="selectAllCheck" class="row-check" type="checkbox" aria-label="Select all staff"></th><th>Staff Name</th><th>Code</th><th>Gross Earnings</th><th>Selected Calculation</th></tr></thead><tbody id="staffRows"><tr><td colspan="5" class="empty">Loading staff...</td></tr></tbody></table></div></section>
+<section class="panel"><div class="panel-head"><h2>Ghana PAYE &amp; SSNIT — this period</h2><span class="eyebrow">Official rates applied per person</span></div><div id="payeCards" style="padding:18px 22px;display:grid;gap:10px"><p class="empty">Calculating…</p></div></section>
 </main>
 <footer class="statusbar"><span>Taxes &amp; Incentives · selected staff only</span><span><input id="search" class="search" type="search" placeholder="Search staff..."></span></footer><div class="toast" id="toast"></div>
 </div>
@@ -78,6 +79,40 @@ async function loadData() {
   const [{ data: staffData, error: staffError }, { data: ruleData, error: ruleError }] = await Promise.all([sb.from('staff').select('id, full_name, phone, staff_code, currency, monthly_salary, weekday_rate, weekend_rate').eq('company_id', companyId).order('full_name'), sb.from('deduction_types').select('*').or(`company_id.eq.${companyId},company_id.is.null`).order('name')]);
   if (staffError) throw staffError; if (ruleError) throw ruleError;
   staff = (staffData || []).map(person => ({ ...person, gross: person.monthly_salary || person.weekday_rate || 0 })); rules = ruleData || []; renderStaff(); renderRules();
+  loadPayeBreakdown();
+}
+
+// Ghana PAYE/SSNIT — always via the RPC so Registry rate changes apply with no
+// frontend change. Results are saved for the Final Review page (no recalc there).
+const PAYE_STORAGE_KEY = 'metosync_payroll_breakdown';
+function payeFields(row) {
+  const r = Array.isArray(row) ? row[0] || {} : row || {};
+  return {
+    ssnit: r.ssnit_employee ?? r.ssnit ?? r.employee_ssnit ?? 0,
+    paye: r.paye ?? r.paye_tax ?? r.tax ?? 0,
+    net: r.net_pay ?? r.net ?? r.net_salary ?? 0
+  };
+}
+async function loadPayeBreakdown() {
+  const box = document.getElementById('payeCards');
+  if (!box) return;
+  const year = new Date().getFullYear();
+  const rows = await Promise.all(staff.map(async person => {
+    try {
+      const { data, error } = await sb.rpc('calculate_ghana_payroll_tax', { p_gross_monthly_salary: Number(person.gross || 0), p_year: year });
+      if (error) return { person, error: error.message };
+      return { person, ...payeFields(data) };
+    } catch (e) { return { person, error: e.message }; }
+  }));
+  localStorage.setItem(PAYE_STORAGE_KEY, JSON.stringify({
+    companyCode,
+    generatedAt: new Date().toISOString(),
+    rows: rows.filter(r => !r.error).map(r => ({ id: r.person.id, name: r.person.full_name, code: r.person.staff_code || '', gross: Number(r.person.gross || 0), ssnit: r.ssnit, paye: r.paye, net: r.net, currency: r.person.currency || 'GHS' }))
+  }));
+  box.innerHTML = rows.length ? rows.map(r => r.error
+    ? `<div class="rule-card" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px"><div class="rule-copy"><strong>${r.person.full_name || 'Unnamed staff'}</strong><small class="danger">Couldn't calculate: ${r.error}</small></div></div>`
+    : `<div class="rule-card" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px"><div class="rule-copy"><strong>${r.person.full_name || 'Unnamed staff'}</strong> <span class="staff-meta">${r.person.staff_code || ''}</span><small>SSNIT: ${money(r.ssnit, r.person.currency)} · Tax (PAYE): ${money(r.paye, r.person.currency)} · Net pay: ${money(r.net, r.person.currency)}</small></div></div>`
+  ).join('') : '<p class="empty">No staff to calculate for.</p>';
 }
 document.getElementById('addRule').onclick = async () => { const name = document.getElementById('ruleName').value.trim(); const category = document.getElementById('ruleType').value; const mode = selectedMode(); const value = Number(document.getElementById('ruleValue').value); if (!name) return setMessage('Enter a name for the tax or incentive.'); if (!Number.isFinite(value) || value < 0) return setMessage('Enter a valid percentage or flat amount.'); setMessage(''); const { data, error } = await sb.rpc('add_deduction_type', { p_name: name, p_category: category, p_calc_method: mode, p_amount: value }); if (error) return setMessage(error.message); rules.unshift({ id: data?.id || crypto.randomUUID(), name, category, calc_method: mode, amount: value }); selectedRule = rules[0]; renderRules(); renderStaff(filterStaff()); toast(`${name} added`); };
 document.getElementById('applySelected').onclick = async () => { if (!selectedRule) return setMessage('Add or choose a tax/incentive first.'); if (!selectedStaff.size) return setMessage('Select at least one staff member.'); setMessage(''); const ids = [...selectedStaff]; const { error } = await sb.rpc('apply_deduction_to_staff', { p_staff_ids: ids, p_deduction_type_id: selectedRule.id }); if (error) return setMessage(error.message); renderStaff(filterStaff()); toast(`${selectedRule.name} applied to ${ids.length} selected staff`); };
