@@ -49,7 +49,6 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `payroll` → `renderPayroll`
 - `payments` → `renderPayments`
 - `reports` → `renderReports`
-- `invite` → `renderInvite` (owner only, `manage_admins`)
 - `settings` → settings
 - `contact` → `renderContact`
 
@@ -154,7 +153,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 **Approvals** — `watchguard_open_findings(p_company_id)` → one card per finding (severity badge, rule name, description, suggested fix), optional reason input, Approve → `watchguard_approve_action(p_finding_id, p_user_id, p_reason)`, Reject → `watchguard_reject_action(...)`. `p_user_id` is `myProfile.id`; the server re-verifies identity from the session.
 
-**Reports** — date range + Attendance/Payroll/Staff selector → `report_attendance_summary` / `report_payroll_summary` (both take `p_start`/`p_end`) / `report_staff_summary` (snapshot, `p_company_id` only, no dates).
+**Reports** — date range + Attendance/Payroll/Payments/Staff selector → `report_attendance_summary` / `report_payroll_summary` / `report_payments_summary` (all take `p_start`/`p_end`) / `report_staff_summary` (snapshot, `p_company_id` only, no dates).
 
 **What can go wrong**
 - Tab missing → caller's `admin_users.role` isn't `owner`/`executive_director`. The `executive_director` portfolio exists but has no `role_permissions` rows, so `can()` returns false for it — the tab is gated on `myProfile.role`, not `can()`.
@@ -194,18 +193,17 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Configure provider in Owner Dashboard or Accounts & Billing.
 - Check Edge Function logs in Supabase.
 
-### Invite Team Tab (`admin.html` → Invite Team)
+### Team Invites (`platform.html` → Registry → ✉️ Team Invite)
 **What it does**
-- Owner-only tab (requires `manage_admins` permission).
-- Collects an email and a role; the infographic-style role-card grid is built from `list_active_portfolios()` (nothing is hardcoded in the UI). Card color/icon come from `INVITE_ROLE_COLORS`/`INVITE_ROLE_ICONS` maps keyed by portfolio `code`, with hashed fallback color + initial letter for unknown codes.
-- Calls `admin_create_invite(p_company_id, p_email, p_role, p_created_by)` — returns an 8-char code valid for 7 days, shown with a Copy button.
-- `p_created_by` is `myProfile.id`; the server independently verifies `manage_admins` permission or `owner` role.
+- The only place team invites are created. The company-side "Invite Team" screen was removed from `admin.html` — `admin_create_invite` no longer permits company accounts.
+- `renderRegistryInvite()` — organization select from `platform_list_companies()`, email field, role-tile grid from `list_active_portfolios()` (nothing hardcoded; `INVITE_ROLE_COLORS`/`INVITE_ROLE_ICONS` in platform.html keyed by portfolio `code`, hashed fallback for unknown codes).
+- Calls `registry_admin_invite(p_company_id, p_email, p_role)` — returns an 8-char code valid for 7 days, shown with a Copy button.
 - `p_role` is the portfolio `code`; for an invite to be accepted the code must satisfy the `admin_users.role` CHECK (`owner, admin, manager, payroll_officer, viewer`).
 
 **What can go wrong**
 - Tile grid empty or RPC error → `list_active_portfolios` missing; run `032_portfolios.sql` and refresh PostgREST.
-- RPC returns "You do not have permission to invite admins." → caller lacks `manage_admins` (owner only today).
 - Invite accepted but role rejected → portfolio `code` not in the `admin_users.role` CHECK list.
+- The old inline invite form on the Admins screen was removed — invites go through ✉️ Team Invite only.
 
 ### Portfolios (`platform.html` → Registry → 🗂 Portfolios)
 **What it does**
@@ -238,11 +236,11 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Location
 - `platform.html` → `renderRegistry()` has an **Admins** button.
-- `renderRegistryAdmins()` shows all admins across all companies and allows invite/role/deactivate.
+- `renderRegistryAdmins()` shows all admins across all companies and allows role updates/deactivation (invites moved to the ✉️ Team Invite screen).
 
 ### RPCs (`029_registry_admins.sql`)
 - `registry_admin_list_all()` — returns every admin user with company name.
-- `registry_admin_invite(p_company_id, p_email, p_role, p_created_by)` — generates an invite code for any company.
+- `registry_admin_invite(p_company_id, p_email, p_role)` — generates an invite code for any company (used by the ✉️ Team Invite screen, not the Admins screen).
 - `registry_admin_update_role(p_admin_id, p_role)` — updates an admin role.
 - `registry_admin_deactivate(p_admin_id)` — deactivates an admin.
 

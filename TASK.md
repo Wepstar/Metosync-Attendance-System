@@ -201,6 +201,23 @@ Check items off as they're completed. This file is the actual answer to
       attendance for any chosen date, not just today) → `report_attendance_summary`
 - [ ] Devin: add the four tabs inside Attendance — prompt below
 
+## ✅ Done — Executive reports gap fixed, Registry invite already existed
+
+- [x] Caught a gap in the earlier ED "Reports" spec — it omitted Payments
+      Summary. Corrected: Executive's Reports tab now matches the existing
+      Reports & Analytics section exactly (Attendance by Date, Payroll
+      Summary, Payments Summary), reusing `report_attendance_summary`,
+      `report_payroll_summary`, `report_payments_summary` — no new backend
+- [x] Confirmed `registry_admin_invite(p_company_id, p_email, p_role)`
+      already exists and is already platform-admin-gated (fixed in the
+      original audit) — Metosync Registry staff generating invite codes on
+      behalf of organizations needs zero new backend, just a Registry UI
+- [ ] Assumption flagged to user, not yet confirmed: Registry-generated
+      invites are additive alongside company-owner self-service
+      (`admin_create_invite`), not a replacement — revisit if wrong
+- [ ] Devin: add Payments Summary to Executive's Reports tab; build a
+      "Generate team invite" screen in Registry — prompt below
+
 ## ⬜ Phase 1 — Foundation
 
 **Note**: the Attendance and Payroll menu work above (Set Status for a Day,

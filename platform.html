@@ -13,6 +13,23 @@
 <link rel="stylesheet" href="theme.css">
 <script src="shared.js?v=3"></script>
 <style>
+  .role-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 640px) { .role-grid { grid-template-columns: repeat(2, 1fr); } }
+  .role-card { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; background: #fff; border: 1px solid var(--mt-border); border-left: 4px solid var(--rc, #0d2a4d); border-radius: 14px; padding: 14px 16px; cursor: pointer; text-align: left; box-shadow: 0 1px 3px rgba(13,42,77,.07); transition: transform .18s ease, box-shadow .18s ease, background .18s ease; animation: roleCardIn .35s ease both; }
+  .role-card:hover { transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 24px rgba(13,42,77,.14); }
+  .role-card.selected { background: var(--rc-bg, #f4f7f5); border-color: var(--rc, #0d2a4d); animation: selectPulse .35s ease; }
+  .role-icon { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 21px; flex-shrink: 0; background: var(--rc-bg, #e6eef7); color: var(--rc, #0d2a4d); font-weight: 800; }
+  .role-info { flex: 1; min-width: 0; }
+  .role-name { font-weight: 700; font-size: 14px; color: #0d2a4d; }
+  .role-description { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.4; }
+  .role-step { font-weight: 800; font-size: 20px; color: var(--rc, #0d2a4d); font-variant-numeric: tabular-nums; }
+  .role-check { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; background: var(--rc, #0d2a4d); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; opacity: 0; transform: scale(.5); transition: all .2s ease; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+  .role-card.selected .role-check { opacity: 1; transform: scale(1); }
+  @keyframes roleCardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes selectPulse { 0% { box-shadow: 0 0 0 0 rgba(13,42,77,.35); } 100% { box-shadow: 0 0 0 14px rgba(13,42,77,0); } }
+  .invite-code-box { animation: codeIn .45s ease-out; }
+  @keyframes codeIn { from { opacity: 0; transform: scale(.96); box-shadow: 0 0 0 0 rgba(13,42,77,.3); } to { opacity: 1; transform: scale(1); box-shadow: 0 0 24px rgba(13,42,77,.15); } }
+
   #app.platform-wide {
     width: 100%;
     max-width: none;
@@ -747,6 +764,7 @@ async function renderRegistry() {
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">📋 Registry <span class="text-xs font-normal text-green-600 align-middle">● live</span></h1>
         <div class="flex items-center gap-3">
           <button id="registryAdminsBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #2563eb;">👤 Admins</button>
+          <button id="registryInviteBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #0d2a4d;">✉️ Team Invite</button>
           <button id="registryPortfoliosBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #7c3aed;">🗂 Portfolios</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
@@ -770,6 +788,7 @@ async function renderRegistry() {
 
   document.getElementById('backBtn').onclick = () => { sectionUnlocked = null; render(); };
   document.getElementById('registryAdminsBtn').onclick = () => renderRegistryAdmins();
+  document.getElementById('registryInviteBtn').onclick = () => renderRegistryInvite();
   document.getElementById('registryPortfoliosBtn').onclick = () => renderRegistryPortfolios();
   wireCompanyInteractions(companies || []);
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
@@ -789,16 +808,10 @@ async function renderRegistry() {
 
 async function renderRegistryAdmins() {
   app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading admin registry…</p>`;
-  const [{ data: admins, error: aErr }, { data: companies, error: cErr }] = await Promise.all([
-    sb.rpc('registry_admin_list_all'),
-    sb.rpc('platform_list_companies')
-  ]);
+  const { data: admins, error: aErr } = await sb.rpc('registry_admin_list_all');
   if (aErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(aErr.message)}</p>`; return; }
-  if (cErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml(cErr.message)}</p>`; return; }
 
   const rows = Array.isArray(admins) ? admins : [];
-  const companyList = Array.isArray(companies) ? companies : [];
-  const companyOptions = companyList.map(c => `<option value="${c.id}">${escapeHtml(c.name || '')}</option>`).join('');
 
   const byCompany = new Map();
   rows.forEach(r => {
@@ -813,22 +826,6 @@ async function renderRegistryAdmins() {
       <div class="flex justify-between items-center mt-6 mb-4">
         <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Registry → 👤 Admin Management</h1>
         <button id="backBtn" class="text-sm text-gray-500">← Back to Registry</button>
-      </div>
-      <div class="mt-card p-5 mb-5">
-        <h2 class="font-medium text-sm mb-3">Invite Admin for a Company</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-          <select id="inviteCompanyId" class="border rounded-lg px-3 py-2 text-sm">${companyOptions || '<option value="">No companies</option>'}</select>
-          <input id="inviteEmail" type="email" class="border rounded-lg px-3 py-2 text-sm" placeholder="Email">
-          <select id="inviteRole" class="border rounded-lg px-3 py-2 text-sm">
-            <option value="manager">Manager</option>
-            <option value="payroll_officer">Payroll Officer</option>
-            <option value="viewer">Viewer</option>
-            <option value="admin">Admin</option>
-            <option value="owner">Owner</option>
-          </select>
-        </div>
-        <button id="registryCreateInviteBtn" type="button" class="mt-btn-primary text-sm">Generate Invite Code</button>
-        <p id="inviteFeedback" class="text-sm mt-2"></p>
       </div>
       <div class="mt-card p-5">
         <h2 class="font-medium text-sm mb-3">All Company Admins</h2>
@@ -861,17 +858,6 @@ async function renderRegistryAdmins() {
 
   document.getElementById('backBtn').onclick = () => renderRegistry();
 
-  document.getElementById('registryCreateInviteBtn').onclick = async () => {
-    const feedback = document.getElementById('inviteFeedback');
-    const companyId = document.getElementById('inviteCompanyId').value;
-    const email = document.getElementById('inviteEmail').value.trim();
-    const role = document.getElementById('inviteRole').value;
-    if (!companyId || !email) { feedback.innerHTML = '<span class="text-red-600">Company and email are required.</span>'; return; }
-    feedback.innerHTML = '<span class="text-blue-600">Generating…</span>';
-    const { data, error } = await sb.rpc('registry_admin_invite', { p_company_id: companyId, p_email: email, p_role: role, p_created_by: state.session?.user?.id });
-    feedback.innerHTML = error ? `<span class="text-red-600">${escapeHtml(error.message)}</span>` : `<span class="text-green-700">Invite code: <span class="font-mono">${escapeHtml(data)}</span></span>`;
-  };
-
   document.querySelectorAll('.updateRoleBtn').forEach(btn => {
     btn.onclick = async () => {
       const id = btn.dataset.id;
@@ -890,6 +876,144 @@ async function renderRegistryAdmins() {
       renderRegistryAdmins();
     };
   });
+}
+
+// Style map keyed by portfolio code. Unknown/new roles get a hashed fallback
+// color and an initial-letter icon, so the grid stays fully data-driven.
+const INVITE_ROLE_COLORS = {
+  owner: '#DC2626', executive_director: '#7C3AED', administrator: '#0284C7', admin: '#0284C7',
+  manager: '#0D9488', payroll_officer: '#059669', viewer: '#6B7280', stores_inventory: '#D97706',
+  operations_manager: '#4F46E5', sales_marketing: '#DB2777', customer_service: '#0891B2',
+  procurement: '#EA580C', compliance_legal: '#475569', training_development: '#8B5CF6',
+  security_access: '#F97316', board_governance: '#1E3A8A', audit_internal_control: '#166534',
+  strategy_planning: '#C026D3'
+};
+const INVITE_ROLE_FALLBACK_COLORS = ['#0d2a4d', '#0D9488', '#4F46E5', '#DB2777', '#D97706', '#0891B2', '#059669', '#7C3AED'];
+const INVITE_ROLE_ICONS = {
+  owner: '👑', executive_director: '🎯', administrator: '🛠️', admin: '🛠️', manager: '📋',
+  payroll_officer: '💰', viewer: '👁️', stores_inventory: '📦', operations_manager: '⚙️',
+  sales_marketing: '📈', customer_service: '💬', procurement: '🛒', compliance_legal: '⚖️',
+  training_development: '🎓', security_access: '🔐', board_governance: '🏛️',
+  audit_internal_control: '🔍', strategy_planning: '🧭'
+};
+let registryInviteRole = null;
+
+function inviteRoleColor(code) {
+  if (INVITE_ROLE_COLORS[code]) return INVITE_ROLE_COLORS[code];
+  let h = 0;
+  for (const ch of String(code || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return INVITE_ROLE_FALLBACK_COLORS[h % INVITE_ROLE_FALLBACK_COLORS.length];
+}
+
+function inviteRoleTint(hex) {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, .12)`;
+}
+
+function inviteRoleTileHtml(portfolio, index, active) {
+  const color = inviteRoleColor(portfolio.code);
+  const icon = INVITE_ROLE_ICONS[portfolio.code] || escapeHtml((portfolio.display_name || portfolio.code || '?').charAt(0).toUpperCase());
+  return `<button type="button" class="role-card ${active ? 'selected' : ''}" data-role="${escapeHtml(portfolio.code)}"
+    style="--rc:${color};--rc-bg:${inviteRoleTint(color)};animation-delay:${index * 50}ms">
+    <span class="role-check">✓</span>
+    <div class="role-icon">${icon}</div>
+    <div class="role-info">
+      <h3 class="role-name">${escapeHtml(portfolio.display_name)}</h3>
+      <p class="role-description">${escapeHtml(portfolio.description || '')}</p>
+    </div>
+    <div class="role-step">${String(index + 1).padStart(2, '0')}</div>
+  </button>`;
+}
+
+async function renderRegistryInvite() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
+  const [{ data: companies, error: cErr }, { data: portfolios, error: pErr }] = await Promise.all([
+    sb.rpc('platform_list_companies'),
+    sb.rpc('list_active_portfolios')
+  ]);
+  if (cErr || pErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml((cErr || pErr).message)}</p>`; return; }
+  const companyList = Array.isArray(companies) ? companies : [];
+  const roles = Array.isArray(portfolios) ? portfolios : [];
+  if (!roles.some(r => r.code === registryInviteRole)) registryInviteRole = roles[0]?.code || null;
+
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Registry → ✉️ Generate team invite</h1>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Registry</button>
+      </div>
+      <div class="mt-card p-6 max-w-3xl mx-auto">
+        <p class="text-sm text-gray-500 mb-5">Generate a 7-day invite code to add someone to a company's team.</p>
+
+        <label class="text-xs font-medium text-gray-500" for="regInviteCompany">Organization</label>
+        <select id="regInviteCompany" class="w-full border rounded-lg px-3 py-2 text-sm mb-4 mt-1">
+          ${companyList.map(c => `<option value="${c.id}">${escapeHtml(c.name || '')}</option>`).join('') || '<option value="">No companies</option>'}
+        </select>
+
+        <label class="text-xs font-medium text-gray-500" for="regInviteEmail">Email address</label>
+        <input id="regInviteEmail" type="email" placeholder="teammate@company.com" class="w-full border rounded-lg px-3 py-2 text-sm mb-5 mt-1">
+
+        <p class="text-xs font-medium text-gray-500 mb-2">Select a role</p>
+        <div class="role-grid mb-5" id="regInviteRoleGrid">
+          ${roles.map((r, i) => inviteRoleTileHtml(r, i, r.code === registryInviteRole)).join('') || '<p class="text-gray-400 text-sm">No roles available.</p>'}
+        </div>
+
+        <p id="regInviteError" class="text-red-600 text-sm mb-3"></p>
+        <button id="regSendInviteBtn" type="button" class="mt-btn-primary">Generate Invite Code</button>
+
+        <div id="regInviteResult" class="hidden mt-5 invite-code-box border rounded-xl p-5 text-center" style="border-color: var(--mt-border); background: #f4f7f5;">
+          <p class="text-xs font-medium text-gray-500 mb-2">Invite code — expires in 7 days</p>
+          <code id="regInviteCodeText" class="block font-mono font-bold text-2xl mb-3" style="color: #0d2a4d; letter-spacing: .3em;"></code>
+          <div class="flex justify-center gap-2">
+            <button id="regCopyInviteBtn" type="button" class="mt-btn-primary text-sm">Copy Code</button>
+            <button id="regNewInviteBtn" type="button" class="mt-btn-outline text-sm">Generate Another</button>
+          </div>
+          <p class="text-xs text-gray-500 mt-3">Share this code with the invited person — they'll enter it when signing up.</p>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderRegistry();
+
+  app().querySelectorAll('.role-card').forEach(tile => {
+    tile.onclick = () => {
+      registryInviteRole = tile.dataset.role;
+      app().querySelectorAll('.role-card').forEach(t => t.classList.toggle('selected', t.dataset.role === registryInviteRole));
+    };
+  });
+
+  document.getElementById('regSendInviteBtn').onclick = async () => {
+    const companyId = document.getElementById('regInviteCompany').value;
+    const email = document.getElementById('regInviteEmail').value.trim();
+    const err = document.getElementById('regInviteError');
+    if (!companyId) { err.textContent = 'Select an organization.'; return; }
+    if (!email) { err.textContent = 'Enter an email address.'; return; }
+    if (!registryInviteRole) { err.textContent = 'Select a role.'; return; }
+    err.textContent = '';
+    const btn = document.getElementById('regSendInviteBtn');
+    btn.disabled = true; btn.textContent = 'Generating…';
+    const { data, error } = await sb.rpc('registry_admin_invite', {
+      p_company_id: companyId,
+      p_email: email,
+      p_role: registryInviteRole
+    });
+    btn.disabled = false; btn.textContent = 'Generate Invite Code';
+    if (error) { err.textContent = error.message; return; }
+    document.getElementById('regInviteCodeText').textContent = data;
+    document.getElementById('regInviteResult').classList.remove('hidden');
+  };
+
+  document.getElementById('regCopyInviteBtn').onclick = () => {
+    const code = document.getElementById('regInviteCodeText').textContent;
+    const btn = document.getElementById('regCopyInviteBtn');
+    navigator.clipboard.writeText(code).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy Code'; }, 1500); });
+  };
+
+  document.getElementById('regNewInviteBtn').onclick = () => {
+    document.getElementById('regInviteResult').classList.add('hidden');
+    document.getElementById('regInviteEmail').value = '';
+    document.getElementById('regInviteEmail').focus();
+  };
 }
 
 async function renderRegistryPortfolios() {
