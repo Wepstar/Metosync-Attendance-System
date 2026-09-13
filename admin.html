@@ -458,7 +458,7 @@ async function renderPayroll(el) {
   else if (payrollSubTab === 'history') content = payrollHistoryHtml();
   else if (payrollSubTab === 'quitpay') content = quitPayHtml();
   else { payrollSubTab = 'general'; content = payrollState.period ? payrollGeneralHtml() : payrollStartPeriodHtml(); }
-  el.innerHTML = `<div class="payroll-content mt-fade-in">${content}</div>${payrollSubTabsHtml()}`;
+  el.innerHTML = `${payrollSubTabsHtml()}<div class="payroll-content mt-fade-in">${content}</div>`;
   wirePayrollSubTabs(el);
   if (payrollSubTab === 'general') { if (payrollState.period) wireGeneralPayroll(el); else wireStartPayrollPeriod(el); }
   if (payrollSubTab === 'taxes') { wireTaxesPayroll(el); loadPayeBreakdown(); }
