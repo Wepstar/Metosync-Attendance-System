@@ -225,6 +225,37 @@ Check items off as they're completed. This file is the actual answer to
 - [ ] Devin: add Payments Summary to Executive's Reports tab; build a
       "Generate team invite" screen in Registry — prompt below
 
+## ✅ Done — edge function audit (real regression found and fixed)
+
+- [x] Listed all 7 live edge functions: `resend-email`, `send-email`,
+      `dispatch-notification`, `paystack-payout`, `paystack-webhook`,
+      `flutterwave-payout`, `flutterwave-webhook`
+- [x] `paystack-webhook`: reviewed, well-built — proper HMAC-SHA512
+      signature verification with constant-time comparison
+- [x] **Found and fixed a real regression I caused earlier today**: the
+      authorization checks added to `watchguard_get_payment_provider`,
+      `payment_request_update`, `payment_request_initiate`, and
+      `watchguard_mark_escalation` all check `auth.uid()` — which is NULL
+      for genuine service-role calls (no JWT `sub` claim). This would have
+      broken `paystack-webhook`, `paystack-payout`, and
+      `dispatch-notification` — real payment processing and escalation
+      dispatch. Fixed by adding an explicit `auth.role() = 'service_role'`
+      allowance to all four, verified applied.
+- [x] Found and fixed one more, pre-existing (not caused by me):
+      `payment_request_by_reference` had no authorization check at all —
+      lower severity since references are high-entropy, fixed with the
+      same service-role-aware pattern.
+- [ ] **`flutterwave-payout` and `flutterwave-webhook` are still ACTIVE**
+      despite Flutterwave being removed from the database entirely — these
+      should be deleted or disabled to actually honor "remove Flutterwave
+      completely." Not yet done — need to confirm how to delete an edge
+      function (no `delete_edge_function` tool available; may need to be
+      done via Supabase dashboard, or redeployed as a no-op/disabled stub).
+- [ ] `resend-email` vs `send-email` — two similarly-named functions not
+      yet reviewed for possible duplication (same class of issue as the
+      earlier duplicate "Quick Pay" menu item)
+- [ ] Storage bucket policies, auth config, migration history still unaudited
+
 ## ⬜ Phase 1 — Foundation
 
 **Note**: the Attendance and Payroll menu work above (Set Status for a Day,

@@ -47,7 +47,6 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `sites` → `renderSites`
 - `attendance` → `renderAttendance` (also embeds Location Checker + Broadcast Notifications)
 - `payroll` → `renderPayroll`
-- `payments` → `renderPayments`
 - `settings` → settings
 - `contact` → `renderContact`
 
@@ -160,11 +159,9 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Approve/Reject returns "not found or not open" → another admin already resolved the finding; the list refreshes after each action.
 - Empty cards / `—` values → the RPC's JSON keys differ; the view reads `staff.*`, `payroll.*`, `payments.*`, `approvals_needed.*` (with top-level `next_period_*` fallback).
 
-### Payments Tab (`renderPayments`)
-**What it does**
-- Lists unpaid payroll entries (`payroll_payables` RPC).
-- Allows selecting provider (Paystack / Flutterwave) and method (Bank / MoMo).
-- Creates `payment_request` via Edge Function and updates via webhooks.
+### Payments
+- The top-level **Payments** tab was removed from `admin.html`. Staff payouts happen in **Payroll → Quick Pay** (Paystack) and **Quit Pay** settlements; payment history shows under Payroll History and Executive → Reports → Payments.
+- The old `renderPayments` screen (payroll payables + payment-request history) is gone; if payables need a home again, rebuild it as a Payroll sub-destination using `payroll_payables`.
 
 **What can go wrong**
 - `payroll_payables` fails → `payment_requests` table missing or `GROUP BY` error (fixed by `026_fix_payroll_payables_groupby.sql`).
@@ -174,7 +171,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 ### Payroll Tab (`admin.html`)
 **What it does**
 - Payroll content lives inside the admin dashboard (same container as other tabs; no separate workspace pages, no Back button).
-- Payroll nav (bottom of payroll card): **General Payroll** (`payroll.html`) → **Taxes & Incentives** (`taxes.html`) → **Final Review** (`review.html`) → **💸 Quick Pay** → **📋 Payroll History** → **🚪 Quit Pay**.
+- Payroll nav (top of payroll content, under the header tabs): **General Payroll** (`payroll.html`) → **Taxes & Incentives** (`taxes.html`) → **Final Review** (`review.html`) → **💸 Quick Pay** → **📋 Payroll History** → **🚪 Quit Pay**.
 - Workspace pages link back to embedded views via `admin.html?tab=payroll&sub=quickpay|history|quitpay`.
 - **Payroll History** has nested tabs: **Payroll History** (period list) and **Reports** (range totals + list); both call `report_payroll_summary(p_company_id, p_start, p_end)`.
 - **Quit Pay** calls `staff_quit_settlement_preview(p_staff_id, p_last_working_date)` (pro-rated salary, leave entitled/taken/unused, leave payout, active deductions — all computed server-side), then `staff_process_quit_settlement(...)` with mode `direct` or `itemized`; it creates a `payment_requests` row and marks staff inactive automatically. Both live in `033_quit_pay.sql`.
