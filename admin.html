@@ -214,7 +214,6 @@ function renderDashboard() {
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     can('manage_payments') ? { id: 'payments', label: 'Payments' } : null,
-    can('view_reports') ? { id: 'reports', label: 'Reports' } : null,
     can('manage_settings') ? { id: 'settings', label: 'Settings' } : null,
     { id: 'contact', label: 'Contact & Support' },
   ].filter(Boolean);
@@ -255,7 +254,6 @@ async function renderTabContent() {
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
   if (activeTab === 'payments') return renderPayments(el);
-  if (activeTab === 'reports') return renderReports(el);
   if (activeTab === 'settings') return renderSettings(el);
   if (activeTab === 'contact') return renderContact(el);
 
@@ -2209,112 +2207,6 @@ function downloadCsv(filename, headers, rows) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
-}
-
-async function renderReports(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading reports…</p>`;
-
-  const today = new Date();
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const startDefault = startOfMonth.toISOString().split('T')[0];
-  const endDefault = today.toISOString().split('T')[0];
-  const startInput = document.getElementById('reportStart');
-  const endInput = document.getElementById('reportEnd');
-  const start = startInput && startInput.value ? startInput.value : startDefault;
-  const end = endInput && endInput.value ? endInput.value : endDefault;
-
-  const [{ data: staffSummary, error: staffErr }, { data: attendance, error: attErr }, { data: payroll, error: payErr }, { data: payments, error: payReqErr }] = await Promise.all([
-    sb.rpc('report_staff_summary', { p_company_id: myProfile.company_id }),
-    sb.rpc('report_attendance_summary', { p_company_id: myProfile.company_id, p_start: start, p_end: end }),
-    sb.rpc('report_payroll_summary', { p_company_id: myProfile.company_id, p_start: start, p_end: end }),
-    sb.rpc('report_payments_summary', { p_company_id: myProfile.company_id, p_start: start, p_end: end })
-  ]);
-  const staffErrMsg = staffErr?.message || attErr?.message || payErr?.message || payReqErr?.message;
-
-  const staff = Array.isArray(staffSummary) ? staffSummary[0] || {} : staffSummary || {};
-  const attRows = Array.isArray(attendance) ? attendance : [];
-  const payRows = Array.isArray(payroll) ? payroll : [];
-  const paymentRows = Array.isArray(payments) ? payments : [];
-
-  const totalGross = payRows.reduce((s, r) => s + Number(r.gross_pay || 0), 0);
-  const totalNet = payRows.reduce((s, r) => s + Number(r.net_pay || 0), 0);
-  const totalPending = payRows.reduce((s, r) => s + Number(r.pending_amount || 0), 0);
-  const totalPaid = paymentRows.filter(r => r.status === 'completed').reduce((s, r) => s + Number(r.total_amount || 0), 0);
-
-  el.innerHTML = `
-    <div class="mt-card p-5 mt-fade-in">
-      <h2 class="font-medium mb-3">Reports &amp; Analytics</h2>
-      <div class="flex flex-wrap gap-2 mb-4">
-        <input id="reportStart" type="date" value="${start}" class="border rounded-lg px-3 py-2 text-sm">
-        <input id="reportEnd" type="date" value="${end}" class="border rounded-lg px-3 py-2 text-sm">
-        <button id="refreshReportsBtn" type="button" class="mt-btn-primary text-sm">Refresh</button>
-        <button id="exportReportsBtn" type="button" class="mt-btn-outline text-sm">Export CSV</button>
-      </div>
-      ${staffErrMsg ? `<p class="text-red-600 text-sm mb-2">${escapeHtml(staffErrMsg)}</p>` : ''}
-
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Total Staff</p><p class="text-2xl font-bold">${staff.total_staff || 0}</p></div>
-        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Active</p><p class="text-2xl font-bold text-green-700">${staff.active || 0}</p></div>
-        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Net Payroll</p><p class="text-2xl font-bold">${totalNet.toFixed(2)}</p></div>
-        <div class="bg-white border rounded-xl p-3"><p class="text-xs text-gray-500 uppercase">Paid</p><p class="text-2xl font-bold text-green-700">${totalPaid.toFixed(2)}</p></div>
-      </div>
-
-      <div class="mb-5">
-        <h3 class="font-medium text-sm mb-2">Attendance by Date</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full mt-table text-sm" id="attendanceReportTable">
-            <thead><tr><th>Date</th><th>Present</th><th>Absent</th><th>Late</th><th>On Leave</th><th>Hours</th><th>Staff</th></tr></thead>
-            <tbody>${attRows.map(r => `<tr><td>${r.work_date}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.late}</td><td>${r.on_leave}</td><td>${Number(r.total_hours || 0).toFixed(2)}</td><td>${r.staff_count}</td></tr>`).join('') || '<tr><td class="text-gray-400" colspan="7">No data.</td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="mb-5">
-        <h3 class="font-medium text-sm mb-2">Payroll Summary</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full mt-table text-sm" id="payrollReportTable">
-            <thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Paid</th><th>Pending</th></tr></thead>
-            <tbody>${payRows.map(r => `<tr><td>${escapeHtml(r.period_name)}</td><td>${Number(r.gross_pay || 0).toFixed(2)}</td><td>${Number(r.total_deductions || 0).toFixed(2)}</td><td>${Number(r.net_pay || 0).toFixed(2)}</td><td>${Number(r.paid_amount || 0).toFixed(2)}</td><td>${Number(r.pending_amount || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td class="text-gray-400" colspan="6">No data.</td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="mb-5">
-        <h3 class="font-medium text-sm mb-2">Payments Summary</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full mt-table text-sm" id="paymentsReportTable">
-            <thead><tr><th>Provider</th><th>Status</th><th>Amount</th><th>Count</th></tr></thead>
-            <tbody>${paymentRows.map(r => `<tr><td>${escapeHtml(r.provider)}</td><td>${escapeHtml(r.status)}</td><td>${Number(r.total_amount || 0).toFixed(2)}</td><td>${r.count}</td></tr>`).join('') || '<tr><td class="text-gray-400" colspan="4">No data.</td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>`;
-
-  document.getElementById('refreshReportsBtn').onclick = () => renderReports(el);
-  document.getElementById('exportReportsBtn').onclick = () => {
-    const start = document.getElementById('reportStart').value;
-    const end = document.getElementById('reportEnd').value;
-    const rows = [
-      ['Attendance', 'Date', 'Present', 'Absent', 'Late', 'On Leave', 'Hours', 'Staff'],
-      ...attRows.map(r => ['', r.work_date, r.present, r.absent, r.late, r.on_leave, Number(r.total_hours || 0).toFixed(2), r.staff_count]),
-      [],
-      ['Payroll', 'Period', 'Gross', 'Deductions', 'Net', 'Paid', 'Pending'],
-      ...payRows.map(r => ['', r.period_name, r.gross_pay, r.total_deductions, r.net_pay, r.paid_amount, r.pending_amount]),
-      [],
-      ['Payments', 'Provider', 'Status', 'Amount', 'Count'],
-      ...paymentRows.map(r => ['', r.provider, r.status, r.total_amount, r.count])
-    ];
-    const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reports_${start}_${end}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 }
 
 async function renderSettings(el) {

@@ -48,7 +48,6 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `attendance` → `renderAttendance` (also embeds Location Checker + Broadcast Notifications)
 - `payroll` → `renderPayroll`
 - `payments` → `renderPayments`
-- `reports` → `renderReports`
 - `settings` → settings
 - `contact` → `renderContact`
 
@@ -300,18 +299,12 @@ supabase/migrations/026_fix_payroll_payables_groupby.sql
 
 ## 9. Reporting & Analytics
 
-### Admin Reports (`admin.html` → Reports tab)
-**What it does**
-- `report_staff_summary` shows total/active/inactive/on-leave/permanent/casual staff and pending devices.
-- `report_attendance_summary` returns daily present/absent/late/on-leave/other counts and total hours for a date range.
-- `report_payroll_summary` returns gross, deductions, net, paid, and pending per payroll period.
-- `report_payments_summary` aggregates payment requests by provider and status.
-- Export button downloads CSV of the displayed tables.
+### Admin Reports
+- The old top-level **Reports** tab was removed from `admin.html` — company reports live in the **Executive → Reports** sub-tab (see above) and Payroll → Payroll History → Reports. The `report_*` RPCs are unchanged.
 
 **What can go wrong**
 - Reports fail → `031_reports_analytics.sql` not applied or `report_*` RPCs missing.
 - Dates not filtering → verify `p_start` and `p_end` are `date` strings (YYYY-MM-DD).
-- CSV export empty → no data for selected range; try a wider date range.
 
 ### Owner Reports (`platform.html` → 📊 Reports button)
 **What it does**
