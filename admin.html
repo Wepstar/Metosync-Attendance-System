@@ -23,6 +23,9 @@
   .payroll-content .mt-icon-btn.edit { background: #dbeafe; color: #1e40af; }
   .payroll-subtabs { margin: 1rem 0; }
   .payroll-subtabs .mt-tab.active { background: #0d2a4d; color: white; }
+  .payroll-subtabs .mt-tab[data-payroll-tab] { --tc: #0d2a4d; border-radius: 12px; font-weight: 600; padding: .55rem 1rem; color: var(--tc); background: #eef3f6; background: color-mix(in srgb, var(--tc) 10%, #fff); border: 1px solid transparent; border-color: color-mix(in srgb, var(--tc) 22%, transparent); transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease; }
+  .payroll-subtabs .mt-tab[data-payroll-tab]:hover { transform: translateY(-2px); box-shadow: 0 8px 18px -8px var(--tc); }
+  .payroll-subtabs .mt-tab[data-payroll-tab].active { background: var(--tc); color: #fff; border-color: var(--tc); box-shadow: 0 8px 18px -8px var(--tc); }
 </style>
 </head>
 <body class="min-h-screen" style="background: var(--mt-bg);">
@@ -469,15 +472,15 @@ function payrollPreviewHtml(preview, currency) {
 }
 
 function payrollSubTabsHtml() {
-  const tab = (id, label) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}">${label}</button>`;
-  return `<div class="payroll-subtabs flex flex-wrap gap-1 mt-card p-1">
-    ${tab('general', '01 General Payroll')}
-    ${tab('taxes', '02 Taxes &amp; Incentives')}
-    ${tab('review', '03 Final Review')}
-    ${tab('budgets', '💰 Budgets')}
-    ${tab('quickpay', '💸 Quick Pay')}
-    ${tab('history', '📋 Payroll History')}
-    ${tab('quitpay', '🚪 Quit Pay')}
+  const tab = (id, label, color) => `<button type="button" class="mt-tab ${payrollSubTab === id ? 'active' : ''}" data-payroll-tab="${id}" style="--tc:${color}">${label}</button>`;
+  return `<div class="payroll-subtabs flex flex-wrap gap-2 mt-card p-1">
+    ${tab('general', '01 General Payroll', '#2563eb')}
+    ${tab('taxes', '02 Taxes &amp; Incentives', '#7c3aed')}
+    ${tab('review', '03 Final Review', '#0d2a4d')}
+    ${tab('budgets', '💰 Budgets', '#f59e0b')}
+    ${tab('quickpay', '💸 Quick Pay', '#059669')}
+    ${tab('history', '📋 Payroll History', '#0891b2')}
+    ${tab('quitpay', '🚪 Quit Pay', '#dc2626')}
   </div>`;
 }
 
