@@ -42,8 +42,8 @@
   .templateCard.selected .tpl-check { opacity: 1; transform: scale(1); }
   @keyframes tplIn { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
   .mt-rail { display: none; }
-  @media (min-width: 1440px) {
-    .mt-rail:not(:empty) { display: block; position: fixed; left: max(14px, calc(50% - 710px)); top: 150px; width: 252px; z-index: 30; }
+  @media (min-width: 1280px) {
+    .mt-rail:not(:empty) { display: block; position: fixed; left: max(10px, calc(50% - 460px - var(--rail-w) - 12px)); top: 140px; width: var(--rail-w); --rail-w: min(252px, calc(50vw - 468px)); z-index: 30; }
   }
   .rail-card { background: #fff; border: 1px solid var(--mt-border); border-radius: 18px; padding: 18px 16px; box-shadow: 0 10px 26px -14px rgba(13,42,77,.28); }
   .rail-title { font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #0d2a4d; text-transform: uppercase; margin-bottom: 16px; }
