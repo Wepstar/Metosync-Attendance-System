@@ -21,6 +21,28 @@
   not a new table per document type.
 - Every new table: RLS enabled from creation (see `CLAUDE.md` rule 4).
 
+## 2b. Design principle: complete workspaces, not restricted access
+
+The primary goal of each workspace is to give that officer everything their
+actual job needs to work freely — not a cut-down, permission-gated slice.
+"Administrator" means the full scope of that job: Office Management, Record
+Keeping, Supplies & Equipment, etc. — not just the pieces already built.
+The same standard applies to every other portfolio.
+
+Practical implications:
+- When scoping a workspace, ask "what does this job actually involve day to
+  day" first, then check what already exists — don't stop at whatever
+  happens to already be built.
+- The `staff_section_access` checkbox grid (Sept 2026) is a company-level
+  privacy override for specific sensitive cases (e.g. hiding payroll from
+  staff who shouldn't see salaries) — it is not the primary access model.
+  Default to giving each officer their full workspace; restriction is the
+  exception, not the starting point.
+- Watch for scope overlap between workspaces with similar-sounding names
+  (e.g. Administrator's "Supplies & Equipment" vs. the Phase 2 "Stores &
+  Inventory" workspace) — resolve the boundary explicitly rather than
+  building both and letting them drift into duplicating each other.
+
 ## 3. Workspace roadmap
 
 ### Phase 1 — Foundation (build first)

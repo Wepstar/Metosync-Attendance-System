@@ -245,16 +245,115 @@ Check items off as they're completed. This file is the actual answer to
       `payment_request_by_reference` had no authorization check at all —
       lower severity since references are high-entropy, fixed with the
       same service-role-aware pattern.
-- [ ] **`flutterwave-payout` and `flutterwave-webhook` are still ACTIVE**
-      despite Flutterwave being removed from the database entirely — these
-      should be deleted or disabled to actually honor "remove Flutterwave
-      completely." Not yet done — need to confirm how to delete an edge
-      function (no `delete_edge_function` tool available; may need to be
-      done via Supabase dashboard, or redeployed as a no-op/disabled stub).
-- [ ] `resend-email` vs `send-email` — two similarly-named functions not
-      yet reviewed for possible duplication (same class of issue as the
-      earlier duplicate "Quick Pay" menu item)
+- [x] **`flutterwave-payout` and `flutterwave-webhook` neutralized** — no
+      tool available to delete an edge function outright, so redeployed
+      both as inert stubs that return HTTP 410 with a clear message,
+      refusing any request rather than attempting a real payout or trusting
+      an unverified webhook. Practically equivalent to removal; full
+      deletion via the Supabase dashboard is optional cleanup whenever
+      convenient, not urgent.
+- [x] **Found and fixed a real open-relay vulnerability**: `resend-email`
+      checked only that an Authorization header was *present*, never that
+      it belonged to a real authorized user — since `verify_jwt: true` only
+      confirms the JWT is validly signed (the public anon key satisfies
+      that), anyone holding the anon key could send arbitrary emails
+      through Metosync's Resend account to any address. `send-email` (the
+      other, near-identical function) is the properly-built version —
+      genuinely verifies the JWT via `auth.getUser()` and checks
+      `admin_users` membership. Neutralized `resend-email` as a stub
+      pointing callers to `send-email`, consolidating on the secure one
+      rather than leaving two to drift apart.
+- [ ] Devin: confirm no frontend page still calls `resend-email` directly —
+      repoint any that do to `send-email`
+- [x] **Edge function audit complete** — all 7 reviewed
+      (resend-email, send-email, dispatch-notification, paystack-payout,
+      paystack-webhook, flutterwave-payout, flutterwave-webhook)
 - [ ] Storage bucket policies, auth config, migration history still unaudited
+
+## ✅ Done — storage, auth config, migration history all checked
+
+- [x] **Found and fixed a real cross-company data leak in storage**:
+      `staff-photos` bucket had zero company scoping on its policies — any
+      authenticated admin from any company could view, upload to, or
+      delete photos in any other company's folder. `org-logo` already had
+      the correct pattern (folder = `my_company_id()`); applied the same
+      fix here, confirmed against the actual `{company_id}/filename`
+      path convention in use. Also added the missing 5MB size limit and
+      image-only MIME restriction (previously unrestricted).
+- [x] `org-logo` bucket reviewed — already correctly scoped, no issue
+- [x] Auth config: confirmed (again) no tool available to toggle these
+      settings directly — remains the manual dashboard checklist given
+      earlier (leaked password protection, MFA, session lifetimes, rate
+      limits, Cloudflare, CORS)
+- [x] Migration history reviewed — 51 migrations, Sept 2–13 2026, clean and
+      well-named, no gaps or anomalies
+- [x] **This closes every item on the original post-audit open-items
+      list** (edge functions, storage, auth config, migration history all
+      now checked)
+
+## ⬜ Still open, lower priority
+
+- [ ] `onboarding_invites` invite-creation policy inconsistency
+      (`system_role` vs `is_platform_admin()`) — lower urgency now that the
+      one exploitable instance is already fixed
+- [ ] Idempotency protection for `watchguard_evaluate_rules` (duplicate-
+      finding spam from a guessed/repeated `event_id`)
+- [ ] Minor enumeration risks (`staff_start_login`, `check_staff_geofence`)
+- [x] Budgets — scoped and built as payroll budgeting (see Phase 1, Finance
+      & Payroll section above)
+
+## ✅ Done — Company Staff shared access + section privacy controls
+
+- [x] **Decided**: a "Company Staff" menu, gated by a shared password per
+      company (mirrors platform.html's existing pattern) — individual login
+      stays required first, so the audit trail stays attributable; the
+      shared password is an additional gate on top, not a replacement.
+      Default model is "everyone in" — Executive Director or Metosync
+      Registry then selectively restrict specific staff from specific
+      sections (e.g. hiding Finance & Payroll from staff who shouldn't see
+      salaries) via a checkbox grid, rather than default-deny RBAC.
+- [x] Built: `company_staff_passwords` table +
+      `set_company_staff_password`/`verify_company_staff_password`
+      (owner/Executive Director/Registry only to set; requires already
+      being a logged-in admin of the company to verify)
+- [x] Built: `staff_section_access` table (per staff member, per section,
+      defaults to access=true when no row exists) +
+      `set_staff_section_access` (owner/ED/Registry only, logs to
+      company_activity_log → visible in Registry) +
+      `list_staff_section_access` (for the checkbox grid UI)
+- [x] Built: `staff_has_section_access(admin_user_id, section_code)` — the
+      check other functions can call going forward
+- [ ] **Not yet done**: wiring `staff_has_section_access` into the actual
+      workspace RPCs (report_payroll_summary, etc.) — this is deliberately
+      incremental, one workspace at a time, not done in this pass
+- [ ] Devin: build the "Company Staff" password gate UI and the ED/Registry
+      checkbox grid screen — prompt below
+
+## ✅ Done — per-department passwords (third layer, same as platform.html)
+
+- [x] **Decided**: extend platform.html's exact 3-layer pattern (individual
+      login → universal password → per-section password) to the admin
+      side. Layer 2 (universal) already exists — reused
+      `company_staff_passwords` from above rather than duplicating it.
+      Layer 3 (per-department) is new: each Workspace Suite section can
+      have its own password. Executive Director (and Owner, by
+      assumption — flagged to user, correct if wrong) bypass this
+      entirely — full access to every department, no password needed.
+- [x] Built: `company_section_passwords` table +
+      `set_company_section_password` (owner/ED/Registry only) +
+      `verify_company_section_password` (built-in ED/Owner/Registry
+      bypass returns true immediately, no password check) +
+      `company_section_password_is_set`
+- [ ] **Relationship to the checkbox grid (staff_section_access), worth
+      understanding**: these are two different mechanisms that can coexist
+      — the checkbox grid is config-driven (ED/Registry pre-decides who
+      can see what, invisible to staff until they try), while this is
+      secret-knowledge-driven (staff must know/enter a password). Not
+      mutually exclusive, but worth deciding deliberately whether both are
+      wanted long-term or if this supersedes the checkbox grid for some
+      sections — not resolved, flagging rather than deciding unilaterally.
+- [ ] Devin: build the per-department password prompt UI (same pattern as
+      the Company Staff gate) — prompt below
 
 ## ⬜ Phase 1 — Foundation
 
@@ -280,8 +379,27 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
         record, already logs to `staff_changes` for Registry visibility),
         `admin_send_notification` (welcome message), and
         `add_staff_custom_fields` (optional extra fields) already cover it
-  - [ ] Devin: build the Onboarding wizard — prompt below. **This closes out
-        every planned Administrator workspace item.**
+  - [ ] Devin: build the Onboarding wizard — prompt below
+  - [x] **Record Keeping (new — added after redefining Administrator's
+        real scope to include Office Management, Record Keeping, Supplies
+        & Equipment, not just what happened to already exist)**: built a
+        generic document template/submission system —
+        `create_document_template`, `list_document_templates`,
+        `submit_document`, `list_document_submissions`. Seeded 4
+        platform-default templates: Meeting Minutes, Incident Report, Work
+        Handover, Daily Action Planner. Scoped to admin-created records for
+        this pass; staff self-submission (e.g. a staff-filed incident
+        report) is a natural follow-up, not built yet.
+  - [x] **Supplies & Equipment built**, using the working assumption above
+        (lightweight internal office tracker — stationery, furniture,
+        equipment assigned to staff): `add_office_supply`,
+        `update_office_supply`, `list_office_supplies`,
+        `delete_office_supply`. Distinct table (`office_supplies`) from
+        whatever Stores & Inventory (Phase 2) will use, keeping the two
+        scopes from colliding. **This now genuinely closes Administrator's
+        full stated scope**: Office Management, Record Keeping, Supplies &
+        Equipment, plus Attendance/Sites/Leave/Onboarding.
+  - [ ] Devin: build "Records" and "Supplies & Equipment" tabs — prompt below
 - [~] **Finance & Payroll Manager workspace** — in progress via Payroll menu buildout
   - [x] Backend: Quick Pay (final settlement) built; Payroll History backed
         by existing report_payroll_summary; Flutterwave removed
@@ -297,13 +415,20 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
         Metosync staff update rates via Registry when GRA revises them.
   - [ ] Devin: surface this in the Taxes & Incentives step of the payroll
         wizard — prompt below
-  - [ ] Budgets — not yet started, the one remaining Finance & Payroll item
+  - [x] **Budgets built**: scoped to payroll budgeting specifically (set a
+        planned spend per department/period via `set_payroll_budget`,
+        compare against actual via `payroll_budget_vs_actual`, reusing
+        existing payroll_entries/payroll_periods data). This closes every
+        planned Finance & Payroll workspace item.
+  - [ ] Devin: build a "Budgets" tab — prompt below
 - [ ] Devin: **consolidate, don't duplicate** — the Admin header's "Reports
       & Analytics" menu (Attendance by Date, Payroll Summary, Payments
       Summary) uses the same three functions already specced for
       Executive's Reports tab. Confirm Executive's version works, then
       remove the Admin header version entirely — prompt below
-- [~] **Executive Director workspace** — backend started
+- [x] **Executive Director workspace** — full stated scope now covered
+      backend-side (Overview, approvals, strategic reports, company-wide
+      analytics, admin team, company settings)
   - [x] `executive_dashboard_summary(p_company_id)` built — one combined
         "at a glance" view (staff/attendance today, pending payroll,
         next payroll period, pending payments, open Watchguard findings by
@@ -312,6 +437,11 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
         duplicating logic: `watchguard_open_findings` (approvals),
         `report_attendance_summary`/`report_payroll_summary`/
         `report_staff_summary` (drill-down detail)
+  - [x] **Admin Team management + Company Settings** (applying the same
+        "complete workspace, not a slice" standard used for Administrator):
+        `admin_list_company`, `admin_update_role`, `admin_deactivate`, and
+        `update_company_profile` all already existed and were already
+        secured earlier in the session — zero new backend needed
   - [ ] Devin prompt sent — build below
   - [ ] Frontend built
 
