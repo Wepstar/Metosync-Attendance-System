@@ -213,6 +213,8 @@ function renderDashboard() {
     can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
     plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
+    { id: 'records', label: 'Records' },
+    { id: 'supplies', label: 'Supplies' },
     can('manage_settings') ? { id: 'settings', label: 'Settings' } : null,
     { id: 'contact', label: 'Contact & Support' },
   ].filter(Boolean);
@@ -252,6 +254,8 @@ async function renderTabContent() {
   if (activeTab === 'attendance') return renderAttendance(el);
   clearAttendanceAutoRefresh();
   if (activeTab === 'payroll') return renderPayroll(el);
+  if (activeTab === 'records') return renderRecords(el);
+  if (activeTab === 'supplies') return renderSupplies(el);
   if (activeTab === 'settings') return renderSettings(el);
   if (activeTab === 'contact') return renderContact(el);
 
@@ -2486,6 +2490,191 @@ async function renderExecReports(el) {
       <tbody>${rows.map(r => `<tr><td>${r.work_date}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.late}</td><td>${r.on_leave}</td><td>${Number(r.total_hours || 0).toFixed(2)}</td><td>${r.staff_count}</td></tr>`).join('') || '<tr><td class="text-gray-400" colspan="7">No data for this range.</td></tr>'}</tbody>
     </table></div>`;
   }
+}
+
+// ===== RECORDS =====
+
+let recordsTemplates = [];
+let recordsSelectedTemplate = null;
+let recordsFilterType = '';
+
+function recordFieldInput(field) {
+  const key = escapeHtml(field.key || field.name || '');
+  const label = escapeHtml(field.label || field.key || field.name || 'Field');
+  const type = (field.type || 'text').toLowerCase();
+  const cls = 'block w-full border rounded-lg px-3 py-2 mt-1 text-sm';
+  if (type === 'textarea') return `<label class="text-sm">${label}<textarea data-field-key="${key}" rows="3" class="${cls}"></textarea></label>`;
+  if (type === 'date') return `<label class="text-sm">${label}<input data-field-key="${key}" type="date" class="${cls}"></label>`;
+  if (type === 'number') return `<label class="text-sm">${label}<input data-field-key="${key}" type="number" step="any" class="${cls}"></label>`;
+  if (type === 'select' && Array.isArray(field.options)) return `<label class="text-sm">${label}<select data-field-key="${key}" class="${cls}">${field.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></label>`;
+  if (type === 'checkbox' || type === 'boolean') return `<label class="text-sm flex items-center gap-2 mt-1"><input data-field-key="${key}" type="checkbox"> ${label}</label>`;
+  return `<label class="text-sm">${label}<input data-field-key="${key}" type="text" class="${cls}"></label>`;
+}
+
+async function renderRecords(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading records…</p>`;
+  const { data, error } = await sb.rpc('list_document_templates', { p_company_id: myProfile.company_id });
+  if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
+  recordsTemplates = Array.isArray(data) ? data : [];
+  const typeName = t => t.template_type || t.name || t.display_name || 'Template';
+  const typeOptions = ['<option value="">All types</option>', ...recordsTemplates.map(t => `<option value="${escapeHtml(typeName(t))}" ${recordsFilterType === typeName(t) ? 'selected' : ''}>${escapeHtml(typeName(t))}</option>`)].join('');
+  el.innerHTML = `<div class="mt-fade-in">
+    <div class="mt-card p-5 mb-4">
+      <h2 class="font-medium mb-1">New record</h2>
+      <p class="text-xs text-gray-500 mb-3">Pick a record type, then fill in the form that appears.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="templateCards">
+        ${recordsTemplates.map((t, i) => `<button type="button" class="templateCard border rounded-xl p-4 text-left ${recordsSelectedTemplate === i ? 'border-blue-700 bg-blue-50' : ''}" data-template-index="${i}"><p class="font-medium text-sm">${escapeHtml(typeName(t))}</p>${t.description ? `<p class="text-xs text-gray-500 mt-1">${escapeHtml(t.description)}</p>` : ''}</button>`).join('') || '<p class="text-gray-400 text-sm">No record types available yet.</p>'}
+      </div>
+      <div id="recordFormArea"></div>
+    </div>
+    <div class="mt-card p-5">
+      <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+        <h2 class="font-medium">View records</h2>
+        <select id="recordsTypeFilter" class="border rounded-lg px-3 py-2 text-sm">${typeOptions}</select>
+      </div>
+      <div id="recordsList"><p class="text-gray-400 text-sm">Loading…</p></div>
+    </div>
+  </div>`;
+  el.querySelectorAll('.templateCard').forEach(card => {
+    card.onclick = () => { recordsSelectedTemplate = Number(card.dataset.templateIndex); renderRecords(el); };
+  });
+  if (recordsSelectedTemplate !== null && recordsTemplates[recordsSelectedTemplate]) renderRecordForm(el, recordsTemplates[recordsSelectedTemplate]);
+  document.getElementById('recordsTypeFilter').onchange = e => { recordsFilterType = e.target.value; loadDocumentSubmissions(); };
+  loadDocumentSubmissions();
+}
+
+function renderRecordForm(el, template) {
+  const area = document.getElementById('recordFormArea');
+  let fields = template.field_schema;
+  if (typeof fields === 'string') { try { fields = JSON.parse(fields); } catch (e) { fields = []; } }
+  if (!Array.isArray(fields)) fields = [];
+  const name = template.template_type || template.name || 'record';
+  area.innerHTML = `<div class="border-t mt-4 pt-4" style="border-color:var(--mt-border)">
+    <p class="font-medium text-sm mb-3">${escapeHtml(name)}</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">${fields.map(recordFieldInput).join('') || '<p class="text-gray-400 text-sm">This record type has no fields defined.</p>'}</div>
+    <p id="recordFormMsg" class="text-sm mb-2"></p>
+    <button id="submitRecordBtn" type="button" class="mt-btn-primary">Save Record</button>
+  </div>`;
+  document.getElementById('submitRecordBtn').onclick = async () => {
+    const msg = document.getElementById('recordFormMsg');
+    const data = {};
+    area.querySelectorAll('[data-field-key]').forEach(input => { data[input.dataset.fieldKey] = input.type === 'checkbox' ? input.checked : input.value; });
+    const { error } = await sb.rpc('submit_document', { p_template_id: template.id, p_data: data });
+    msg.className = `text-sm mb-2 ${error ? 'text-red-600' : 'text-green-700'}`;
+    msg.textContent = error ? error.message : 'Saved!';
+    if (!error) { area.querySelectorAll('[data-field-key]').forEach(input => { input.value = ''; input.checked = false; }); loadDocumentSubmissions(); }
+  };
+}
+
+async function loadDocumentSubmissions() {
+  const box = document.getElementById('recordsList');
+  if (!box) return;
+  box.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+  const { data, error } = await sb.rpc('list_document_submissions', { p_company_id: myProfile.company_id, p_template_type: recordsFilterType || null });
+  if (error) { box.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+  const rows = Array.isArray(data) ? data : [];
+  box.innerHTML = rows.map(row => {
+    const type = row.template_type || row.type || row.template_name || 'Record';
+    const when = row.created_at ? new Date(row.created_at).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const payload = row.data || row.values || row.submission_data || {};
+    const details = Object.entries(payload).map(([k, v]) => `<p class="text-xs text-gray-600"><span class="font-medium">${escapeHtml(k.replace(/_/g, ' '))}:</span> ${escapeHtml(String(v))}</p>`).join('');
+    return `<div class="border rounded-xl p-3"><div class="flex justify-between gap-2 mb-1"><p class="font-medium text-sm">${escapeHtml(type)}</p><p class="text-xs text-gray-400">${when}</p></div>${details || '<p class="text-xs text-gray-400">No details recorded.</p>'}</div>`;
+  }).join('') || '<p class="text-gray-400 text-sm">No records yet.</p>';
+}
+
+// ===== SUPPLIES & EQUIPMENT =====
+
+let suppliesCategoryFilter = '';
+let suppliesEditingId = null;
+
+async function renderSupplies(el) {
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading supplies…</p>`;
+  const { data, error } = await sb.rpc('list_office_supplies', { p_company_id: myProfile.company_id, p_category: suppliesCategoryFilter || null });
+  if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
+  const items = Array.isArray(data) ? data : [];
+  const categories = [...new Set(items.map(i => i.category).filter(Boolean))];
+  const catOptions = ['<option value="">All categories</option>', ...categories.map(c => `<option value="${escapeHtml(c)}" ${suppliesCategoryFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`)].join('');
+
+  const rows = items.map(item => {
+    const editing = suppliesEditingId === item.id;
+    return `<tr data-supply-id="${item.id}">
+      <td class="font-medium">${escapeHtml(item.name || '')}<span class="block text-xs text-gray-500">${escapeHtml(item.category || '')}</span></td>
+      <td>${editing ? `<input class="supplyQty w-20 border rounded-lg px-2 py-1 text-sm" type="number" min="0" step="1" value="${item.quantity ?? 0}">` : (item.quantity ?? '—')}</td>
+      <td>${editing ? `<input class="supplyAssigned border rounded-lg px-2 py-1 text-sm" value="${escapeHtml(item.assigned_to || '')}">` : escapeHtml(item.assigned_to || '—')}</td>
+      <td>${editing ? `<input class="supplyNotes border rounded-lg px-2 py-1 text-sm" value="${escapeHtml(item.notes || '')}">` : escapeHtml(item.notes || '—')}</td>
+      <td class="whitespace-nowrap">${editing
+        ? `<button type="button" class="supplySaveBtn mt-icon-btn edit" title="Save">✔</button><button type="button" class="supplyCancelBtn mt-icon-btn" title="Cancel">✖</button>`
+        : `<button type="button" class="supplyEditBtn mt-icon-btn edit" title="Edit">✎</button><button type="button" class="supplyDeleteBtn mt-icon-btn delete" title="Delete">🗑</button>`}<span class="supplyRowMsg text-xs"></span></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<div class="mt-fade-in">
+    <div class="mt-card p-5 mb-4">
+      <h2 class="font-medium mb-1">Add item</h2>
+      <p class="text-xs text-gray-500 mb-3">Track office supplies and equipment — who has what, and how many are left.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+        <input id="supplyName" placeholder="Item name" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="supplyCategory" placeholder="Category (e.g. Stationery, Equipment)" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="supplyQty" type="number" min="0" step="1" placeholder="Quantity" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="supplyAssigned" placeholder="Assigned to (optional)" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="supplyNotes" placeholder="Notes (optional)" class="border rounded-lg px-3 py-2 text-sm sm:col-span-2">
+      </div>
+      <p id="supplyMsg" class="text-sm mb-2"></p>
+      <button id="addSupplyBtn" type="button" class="mt-btn-primary">Add Item</button>
+    </div>
+    <div class="mt-card p-5">
+      <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+        <h2 class="font-medium">Current items</h2>
+        <select id="supplyCategoryFilter" class="border rounded-lg px-3 py-2 text-sm">${catOptions}</select>
+      </div>
+      <div class="overflow-x-auto"><table class="w-full mt-table text-sm"><thead><tr><th>Item</th><th>Qty</th><th>Assigned to</th><th>Notes</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="text-gray-400">No items yet — add your first one above.</td></tr>'}</tbody></table></div>
+    </div>
+  </div>`;
+
+  document.getElementById('supplyCategoryFilter').onchange = e => { suppliesCategoryFilter = e.target.value; renderSupplies(el); };
+  document.getElementById('addSupplyBtn').onclick = async () => {
+    const msg = document.getElementById('supplyMsg');
+    const name = document.getElementById('supplyName').value.trim();
+    const category = document.getElementById('supplyCategory').value.trim();
+    if (!name || !category) { msg.className = 'text-sm mb-2 text-red-600'; msg.textContent = 'Give the item a name and category.'; return; }
+    const { error: rpcError } = await sb.rpc('add_office_supply', {
+      p_company_id: myProfile.company_id, p_name: name, p_category: category,
+      p_quantity: Number(document.getElementById('supplyQty').value || 0),
+      p_assigned_to: document.getElementById('supplyAssigned').value.trim() || null,
+      p_notes: document.getElementById('supplyNotes').value.trim() || null
+    });
+    msg.className = `text-sm mb-2 ${rpcError ? 'text-red-600' : 'text-green-700'}`;
+    msg.textContent = rpcError ? rpcError.message : 'Added!';
+    if (!rpcError) renderSupplies(el);
+  };
+
+  el.querySelectorAll('tr[data-supply-id]').forEach(row => {
+    const id = row.dataset.supplyId;
+    const item = items.find(i => String(i.id) === id);
+    const msg = row.querySelector('.supplyRowMsg');
+    const editBtn = row.querySelector('.supplyEditBtn');
+    if (editBtn) editBtn.onclick = () => { suppliesEditingId = item.id; renderSupplies(el); };
+    const delBtn = row.querySelector('.supplyDeleteBtn');
+    if (delBtn) delBtn.onclick = async () => {
+      if (!confirm(`Delete "${item.name}"?`)) return;
+      const { error: rpcError } = await sb.rpc('delete_office_supply', { p_supply_id: item.id });
+      if (rpcError) { msg.textContent = ` ${rpcError.message}`; msg.className = 'supplyRowMsg text-xs text-red-600'; return; }
+      renderSupplies(el);
+    };
+    const saveBtn = row.querySelector('.supplySaveBtn');
+    if (saveBtn) saveBtn.onclick = async () => {
+      const { error: rpcError } = await sb.rpc('update_office_supply', {
+        p_supply_id: item.id,
+        p_quantity: Number(row.querySelector('.supplyQty').value || 0),
+        p_assigned_to: row.querySelector('.supplyAssigned').value.trim() || null,
+        p_notes: row.querySelector('.supplyNotes').value.trim() || null
+      });
+      if (rpcError) { msg.textContent = ` ${rpcError.message}`; msg.className = 'supplyRowMsg text-xs text-red-600'; return; }
+      suppliesEditingId = null; renderSupplies(el);
+    };
+    const cancelBtn = row.querySelector('.supplyCancelBtn');
+    if (cancelBtn) cancelBtn.onclick = () => { suppliesEditingId = null; renderSupplies(el); };
+  });
 }
 
 // ===== SETTINGS =====

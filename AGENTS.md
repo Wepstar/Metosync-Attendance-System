@@ -47,6 +47,8 @@ This document is written for Watchguard (and future AI agents) so they can under
 - `sites` → `renderSites`
 - `attendance` → `renderAttendance` (also embeds Location Checker + Broadcast Notifications)
 - `payroll` → `renderPayroll`
+- `records` → `renderRecords`
+- `supplies` → `renderSupplies`
 - `settings` → settings
 - `contact` → `renderContact`
 
@@ -198,6 +200,27 @@ This document is written for Watchguard (and future AI agents) so they can under
 - Run `025` or `026` SQL and refresh schema.
 - Configure provider in Owner Dashboard or Accounts & Billing.
 - Check Edge Function logs in Supabase.
+
+### Records Tab (`renderRecords`)
+**What it does**
+- `list_document_templates(p_company_id)` renders the available record types as pick-cards (Meeting Minutes, Incident Report, Work Handover, Daily Action Planner are seeded). Selecting one builds the form **from that template's `field_schema`** — each `{key, label, type}` renders as text/textarea/date/number/select/checkbox; nothing is hardcoded per template.
+- Save calls `submit_document(p_template_id, p_data)` — `p_data` is a JSON object keyed by field key.
+- "View records" calls `list_document_submissions(p_company_id, p_template_type)` (`null` = all types), filterable by the type dropdown; each entry renders as a card with its stored key/value pairs.
+
+**What can go wrong**
+- "function does not exist" → the records RPCs were built server-side; deploy + `SELECT pg_notify('pgrst', 'reload schema');`.
+- Empty form → `field_schema` may be a JSON string (handled via `JSON.parse`) or use `name` instead of `key` (both are read); a genuinely empty schema shows "no fields defined".
+- Past entries show raw field keys prettified (`full_name` → "full name") since templates aren't joined to submissions for labels.
+
+### Supplies & Equipment Tab (`renderSupplies`)
+**What it does**
+- `list_office_supplies(p_company_id, p_category)` (`null` = all) renders a table: item, quantity, assigned to, notes. Category filter repopulates from the loaded rows' categories.
+- Add item → `add_office_supply(p_company_id, p_name, p_category, p_quantity, p_assigned_to, p_notes)`.
+- Inline edit (✎) swaps quantity/assigned/notes cells into inputs → `update_office_supply(p_supply_id, p_quantity, p_assigned_to, p_notes)` — name and category are intentionally not editable after creation. Delete (🗑) confirms then calls `delete_office_supply(p_supply_id)`.
+
+**What can go wrong**
+- "function does not exist" → supplies RPCs built server-side; deploy + schema reload.
+- Edit saves but name/category look unchanged → by design; those columns are fixed at creation.
 
 ### Team Invites (`platform.html` → Registry → ✉️ Team Invite)
 **What it does**
