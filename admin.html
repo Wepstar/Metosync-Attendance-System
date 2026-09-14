@@ -21,7 +21,7 @@
   .payroll-content .mt-btn-outline { color: #0d2a4d; border-color: #0d2a4d; }
   .payroll-content .mt-btn-outline:hover { background: #e6eef7; }
   .payroll-content .mt-icon-btn.edit { background: #dbeafe; color: #1e40af; }
-  .tabBtn { border-radius: 10px 10px 0 0; font-weight: 700; font-size: .9rem; padding: .65rem 1.1rem .55rem; color: #5b6b7a; background: transparent; border: none; border-bottom: 3px solid transparent; transition: color .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease; }
+  .tabBtn { border-radius: 10px 10px 0 0; font-weight: 700; font-size: .9rem; padding: .65rem 1.1rem .55rem; color: #5b6b7a; background: transparent; border: none; border-bottom: 3px solid transparent; transition: color .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .tabBtn:hover { color: #0d2a4d; background: #eef3f6; }
   .tabBtn.active { background: #0d2a4d; color: #fff; border-bottom-color: #f59e0b; box-shadow: 0 8px 18px -8px rgba(13,42,77,.55); }
   .payroll-subtabs { margin: 1rem 0; }
@@ -278,6 +278,18 @@ function renderDashboard() {
 }
 
 const tabSnapshots = {};
+let renderToken = 0;
+
+function wrapWithToken(el, token) {
+  return new Proxy(el, {
+    get(target, prop) { return prop === 'innerHTML' ? target.innerHTML : target[prop]; },
+    set(target, prop, value) {
+      if (prop === 'innerHTML' && token !== renderToken) return true;
+      target[prop] = value;
+      return true;
+    }
+  });
+}
 
 const RAIL_CONTENT = {
   staff: `
@@ -342,29 +354,33 @@ function updateSideRail() {
 }
 
 async function renderTabContent() {
-  const el = document.getElementById('tabContent');
+  const token = ++renderToken;
+  const realEl = document.getElementById('tabContent');
+  const el = wrapWithToken(realEl, token);
+  const targetTab = activeTab;
+
   document.querySelectorAll('.tabBtn').forEach(btn => {
-    btn.className = `tabBtn mt-tab ${btn.dataset.tab === activeTab ? 'active' : ''}`;
+    btn.className = `tabBtn mt-tab ${btn.dataset.tab === targetTab ? 'active' : ''}`;
   });
   updateSideRail();
 
-  if (tabSnapshots[activeTab]) el.innerHTML = tabSnapshots[activeTab];
+  if (tabSnapshots[targetTab]) realEl.innerHTML = tabSnapshots[targetTab];
 
-  if (activeTab !== 'attendance') clearAttendanceAutoRefresh();
+  if (targetTab !== 'attendance') clearAttendanceAutoRefresh();
   let job;
-  if (activeTab === 'executive') job = renderExecutive(el);
-  else if (activeTab === 'sites') job = guardSection(el, 'sites', renderSites);
-  else if (activeTab === 'staff') job = guardSection(el, 'staff', renderStaff);
-  else if (activeTab === 'attendance') job = guardSection(el, 'attendance', renderAttendance);
-  else if (activeTab === 'payroll') job = guardSection(el, 'payroll', renderPayroll);
-  else if (activeTab === 'records') job = guardSection(el, 'records', renderRecords);
-  else if (activeTab === 'supplies') job = guardSection(el, 'supplies', renderSupplies);
-  else if (activeTab === 'settings') job = guardSection(el, 'settings', renderSettings);
-  else if (activeTab === 'contact') job = renderContact(el);
-  else { el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`; }
+  if (targetTab === 'executive') job = renderExecutive(el);
+  else if (targetTab === 'sites') job = guardSection(el, 'sites', renderSites);
+  else if (targetTab === 'staff') job = guardSection(el, 'staff', renderStaff);
+  else if (targetTab === 'attendance') job = guardSection(el, 'attendance', renderAttendance);
+  else if (targetTab === 'payroll') job = guardSection(el, 'payroll', renderPayroll);
+  else if (targetTab === 'records') job = guardSection(el, 'records', renderRecords);
+  else if (targetTab === 'supplies') job = guardSection(el, 'supplies', renderSupplies);
+  else if (targetTab === 'settings') job = guardSection(el, 'settings', renderSettings);
+  else if (targetTab === 'contact') job = renderContact(el);
+  else { el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`; job = Promise.resolve(); }
 
   await job;
-  if (document.getElementById('tabContent') === el && activeTab !== 'executive') tabSnapshots[activeTab] = el.innerHTML;
+  if (token === renderToken && document.getElementById('tabContent') === realEl && activeTab === targetTab && targetTab !== 'executive') tabSnapshots[targetTab] = realEl.innerHTML;
 }
 
 // ===== SECTION PASSWORD GATES =====
