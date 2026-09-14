@@ -55,6 +55,13 @@ This document is written for Watchguard (and future AI agents) so they can under
 > **Note**: Watch Guard was removed from the admin menu and now lives in the Owner Dashboard (`platform.html`) with whole-system access.
 > **Note**: Admin management (`Admins` tab) was removed from `admin.html` and now lives in the Registry side (`platform.html`) for support-team access.
 
+### Per-section password gates (`guardSection` / `renderSectionGate`)
+- Every workspace tab except **Company Staff** (its own gate) and **Contact & Support** passes through `guardSection(el, code, renderFn)` in `renderTabContent`. The section code equals the tab id (`staff`, `sites`, `attendance`, `payroll`, `records`, `supplies`, `settings`).
+- Flow: `company_section_password_is_set(p_company_id, p_section_code)` → `false`/error = straight in; `true` = password prompt → `verify_company_section_password(p_company_id, p_section_code, p_password)` must return `true`.
+- Unlocks are memoized in `sectionUnlocks` (in-memory) and cleared on logout along with `companyStaffUnlocked`.
+- Owners/executive_directors see a **Set/change department password** form on each gate → `set_company_section_password(p_company_id, p_section_code, p_password)`. Their server-side bypass means verify returns `true` regardless of input.
+- Enforcement of hidden sections is a backend follow-up; the gate is UI-level only.
+
 ### Staff Tab (`renderStaff`)
 **What it does**
 - Add Staff form accepts full name, mobile, photo, department/role/staff code, pay rates, PIN, site.
@@ -244,6 +251,17 @@ This document is written for Watchguard (and future AI agents) so they can under
 **What can go wrong**
 - RPCs missing → run `032_portfolios.sql`, then `SELECT pg_notify('pgrst', 'reload schema');`.
 - Newly added portfolio code not in `admin_users.role` CHECK → invite acceptance fails; add the code to the CHECK constraint first or keep codes aligned to RBAC roles.
+
+### Activity Logs (`platform.html` → Registry → 📊 Activity Logs)
+**What it does**
+- `renderRegistryActivity` — "Central Registry & Combined Activity Logs" screen. Left sidebar: Organizations Overview stat cards from `platform_registry_overview()` (total firms / active / archived / pending approvals — field names read defensively) plus the Recent Organization Activity heatmap widget from `platform_activity_heatmap(p_days: 7)` (company × day grid shaded by `event_count`).
+- Main table: `registry_list_all_activity_v2(p_company_id, p_start, p_end)` — columns Timestamp / Organization / Action By (name + role) / Action Type (category · action) / Details / Affected Records. Filters: organization dropdown (`platform_list_companies`, blank = all → `p_company_id: null`), date presets (Last 7 Days / This Month / Custom), client-side search, CSV export and print-to-PDF from loaded rows.
+- "Affected Dates (Start–End)" from the mockup is intentionally omitted — no backing field exists yet.
+
+**What can go wrong**
+- "function does not exist" → RPCs built server-side; deploy + schema reload.
+- Heatmap empty → check the RPC's param name (`p_days` assumed) and row shape (`day`/`event_count`/`company_name`).
+- Sidebar stats show `—` → overview RPC field names differ from the aliases read in `renderRegistryActivity`.
 
 ## 5. Platform Dashboard (`platform.html`)
 

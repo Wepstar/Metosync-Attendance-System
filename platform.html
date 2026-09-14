@@ -40,6 +40,9 @@
     padding: 1.5rem clamp(1rem, 3vw, 3rem);
   }
 
+  .activity-layout { display: grid; grid-template-columns: minmax(240px, 280px) 1fr; gap: 16px; }
+  @media (max-width: 860px) { .activity-layout { grid-template-columns: 1fr; } }
+
   .registry-page {
     width: 100%;
     max-width: 120rem;
@@ -771,6 +774,7 @@ async function renderRegistry() {
           <button id="registryInviteBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #0d2a4d;">✉️ Team Invite</button>
           <button id="registryPortfoliosBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #7c3aed;">🗂 Portfolios</button>
           <button id="registryAccessBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #f59e0b;">🔐 Access</button>
+          <button id="registryActivityBtn" type="button" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style="background: #1a3a6b;">📊 Activity Logs</button>
           <button id="backBtn" class="text-sm text-gray-500">← Back</button>
         </div>
       </div>
@@ -796,6 +800,7 @@ async function renderRegistry() {
   document.getElementById('registryInviteBtn').onclick = () => renderRegistryInvite();
   document.getElementById('registryPortfoliosBtn').onclick = () => renderRegistryPortfolios();
   document.getElementById('registryAccessBtn').onclick = () => renderRegistryAccess();
+  document.getElementById('registryActivityBtn').onclick = () => renderRegistryActivity();
   wireCompanyInteractions(companies || []);
   document.getElementById('genCompanyInviteBtn').onclick = async () => {
     const { data, error } = await sb.rpc('create_onboarding_invite');
@@ -1001,6 +1006,156 @@ function sectionAccessTableHtml(data) {
   return `<table class="w-full mt-table text-sm"><thead><tr><th>Staff member</th>${sections.map(s => `<th>${escapeHtml(label(s))}</th>`).join('')}</tr></thead><tbody>
     ${[...staffMap.entries()].map(([staffId, record]) => `<tr><td class="font-medium">${escapeHtml(record.name)}</td>${sections.map(s => `<td><input type="checkbox" class="accessCheck" data-admin-user="${staffId}" data-section="${escapeHtml(s)}" ${record.access[s] !== false ? 'checked' : ''}></td>`).join('')}</tr>`).join('')}
   </tbody></table>`;
+}
+
+// ===== REGISTRY ACTIVITY LOGS =====
+
+let activityCompanyId = null;
+let activityRange = '7d';
+let activityRows = [];
+
+function activityDateRange() {
+  const today = new Date();
+  const end = today.toISOString().split('T')[0];
+  if (activityRange === 'month') return { start: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`, end };
+  if (activityRange === 'custom') return { start: document.getElementById('actCustomStart').value, end: document.getElementById('actCustomEnd').value };
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 6);
+  return { start: weekAgo.toISOString().split('T')[0], end };
+}
+
+function activityTimestamp(value) {
+  return value ? new Date(value).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+}
+
+function filteredActivityRows() {
+  const term = (document.getElementById('actSearch')?.value || '').toLowerCase();
+  if (!term) return activityRows;
+  return activityRows.filter(r => [r.company_name, r.actor_name, r.actor_role, r.category, r.action, r.detail].some(v => String(v || '').toLowerCase().includes(term)));
+}
+
+function activityTableHtml(rows) {
+  return `<table class="w-full mt-table text-sm"><thead><tr><th>Timestamp</th><th>Organization</th><th>User — Action By</th><th>Action Type</th><th>Details</th><th>Affected Records</th></tr></thead><tbody>
+    ${rows.map(r => `<tr>
+      <td class="whitespace-nowrap">${escapeHtml(activityTimestamp(r.performed_at))}</td>
+      <td>${escapeHtml(r.company_name || '')}</td>
+      <td>${escapeHtml(r.actor_name || '—')}${r.actor_role ? `<span class="block text-xs text-gray-500">${escapeHtml(r.actor_role)}</span>` : ''}</td>
+      <td>${escapeHtml([r.category, r.action].filter(Boolean).join(' · '))}</td>
+      <td class="text-gray-600">${escapeHtml(r.detail || '')}</td>
+      <td>${r.affected_records ?? ''}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="text-gray-400">No activity in this range.</td></tr>'}
+  </tbody></table>`;
+}
+
+async function loadActivityRows() {
+  const box = document.getElementById('activityTableBox');
+  const { start, end } = activityDateRange();
+  if (!start || !end) { box.innerHTML = '<p class="text-red-600 text-sm">Pick a start and end date.</p>'; return; }
+  box.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+  const { data, error } = await sb.rpc('registry_list_all_activity_v2', { p_company_id: activityCompanyId || null, p_start: start, p_end: end });
+  if (error) { box.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+  activityRows = Array.isArray(data) ? data : [];
+  box.innerHTML = activityTableHtml(filteredActivityRows());
+}
+
+function heatmapWidgetHtml(data) {
+  const rows = Array.isArray(data) ? data : [];
+  const byCompany = new Map();
+  const days = [];
+  rows.forEach(r => {
+    const day = String(r.day || r.activity_date || '').slice(0, 10);
+    const name = r.company_name || r.org_name || '—';
+    if (!byCompany.has(name)) byCompany.set(name, {});
+    byCompany.get(name)[day] = Number(r.event_count || r.count || 0);
+    if (day && !days.includes(day)) days.push(day);
+  });
+  days.sort();
+  const max = Math.max(1, ...rows.map(r => Number(r.event_count || r.count || 0)));
+  const dayLabel = d => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+  return `<table class="w-full text-xs"><thead><tr><th class="text-left py-1">Organization</th>${days.map(d => `<th class="py-1 font-normal text-gray-500">${dayLabel(d)}</th>`).join('')}</tr></thead><tbody>
+    ${[...byCompany.entries()].map(([name, counts]) => `<tr><td class="py-1 pr-2 font-medium whitespace-nowrap">${escapeHtml(name)}</td>${days.map(d => { const c = counts[d] || 0; const a = c ? 0.15 + 0.85 * (c / max) : 0; return `<td class="p-0.5"><div class="rounded" title="${c} event${c === 1 ? '' : 's'}" style="height:22px;background:rgba(13,42,77,${a.toFixed(2)});${c ? '' : 'background:#f0f3f2'}"></div></td>`; }).join('')}</tr>`).join('') || '<tr><td class="text-gray-400 py-2">No activity this week.</td></tr>'}
+  </tbody></table>`;
+}
+
+async function renderRegistryActivity() {
+  app().innerHTML = `<p class="text-gray-400 text-center mt-10">Loading…</p>`;
+  const [{ data: overview, error: oErr }, { data: companies, error: cErr }, { data: heat, error: hErr }] = await Promise.all([
+    sb.rpc('platform_registry_overview'),
+    sb.rpc('platform_list_companies'),
+    sb.rpc('platform_activity_heatmap', { p_days: 7 })
+  ]);
+  if (oErr || cErr) { app().innerHTML = `<p class="text-red-600 text-center mt-10">${escapeHtml((oErr || cErr).message)}</p>`; return; }
+  const ov = Array.isArray(overview) ? overview[0] || {} : overview || {};
+  const stat = (label, value, color) => `<div class="mt-card p-4"><p class="text-xs text-gray-500">${label}</p><p class="text-2xl font-bold" style="color:${color}">${value ?? '—'}</p></div>`;
+  const companyList = Array.isArray(companies) ? companies : [];
+
+  app().innerHTML = `
+    <div class="registry-page mt-fade-in">
+      <div class="flex justify-between items-center mt-6 mb-4">
+        <div><p class="text-xs font-semibold uppercase tracking-wide" style="color:#f59e0b">Unified Registry Services</p>
+        <h1 class="text-lg font-bold" style="color: var(--mt-green-dark);">Central Registry &amp; Combined Activity Logs</h1></div>
+        <button id="backBtn" class="text-sm text-gray-500">← Back to Registry</button>
+      </div>
+      <div class="activity-layout">
+        <div class="grid gap-3 content-start">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Organizations Overview</p>
+          ${stat('Total Integrated Firms', ov.total_integrated_firms ?? ov.total_firms ?? ov.total_organizations ?? ov.total_companies, '#0d2a4d')}
+          ${stat('Active Organizations', ov.active_organizations ?? ov.active_firms ?? ov.active, '#15803d')}
+          ${stat('Archived / Inactive', ov.archived_inactive ?? ov.archived ?? ov.inactive, '#b91c1c')}
+          ${stat('Pending Approvals', ov.pending_approvals ?? ov.pending, '#f59e0b')}
+          <div class="mt-card p-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Recent Organization Activity</p>
+            ${hErr ? `<p class="text-red-600 text-xs">${escapeHtml(hErr.message)}</p>` : heatmapWidgetHtml(heat)}
+          </div>
+        </div>
+        <div class="mt-card p-5 overflow-x-auto">
+          <div class="flex flex-wrap items-center gap-2 mb-4">
+            <select id="actCompany" class="border rounded-lg px-3 py-2 text-sm">
+              <option value="">All organizations</option>
+              ${companyList.map(c => `<option value="${c.id}" ${activityCompanyId === c.id ? 'selected' : ''}>${escapeHtml(c.name || '')}</option>`).join('')}
+            </select>
+            <select id="actRange" class="border rounded-lg px-3 py-2 text-sm">
+              <option value="7d" ${activityRange === '7d' ? 'selected' : ''}>Last 7 Days</option>
+              <option value="month" ${activityRange === 'month' ? 'selected' : ''}>This Month</option>
+              <option value="custom" ${activityRange === 'custom' ? 'selected' : ''}>Custom</option>
+            </select>
+            <span id="actCustom" class="${activityRange === 'custom' ? '' : 'hidden'} flex gap-2">
+              <input id="actCustomStart" type="date" class="border rounded-lg px-3 py-2 text-sm">
+              <input id="actCustomEnd" type="date" class="border rounded-lg px-3 py-2 text-sm">
+              <button id="actCustomGo" type="button" class="mt-btn-outline text-sm">Apply</button>
+            </span>
+            <input id="actSearch" type="search" placeholder="🔍 Search activity…" class="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px]">
+            <button id="actExportExcel" type="button" class="mt-btn-outline text-sm">⬇️ Export Excel</button>
+            <button id="actExportPdf" type="button" class="mt-btn-outline text-sm">📄 Export PDF</button>
+          </div>
+          <div id="activityTableBox"><p class="text-gray-400 text-sm">Loading…</p></div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderRegistry();
+  document.getElementById('actCompany').onchange = e => { activityCompanyId = e.target.value || null; loadActivityRows(); };
+  document.getElementById('actRange').onchange = e => {
+    activityRange = e.target.value;
+    document.getElementById('actCustom').classList.toggle('hidden', activityRange !== 'custom');
+    if (activityRange !== 'custom') loadActivityRows();
+  };
+  const go = document.getElementById('actCustomGo');
+  if (go) go.onclick = () => loadActivityRows();
+  document.getElementById('actSearch').oninput = () => { document.getElementById('activityTableBox').innerHTML = activityTableHtml(filteredActivityRows()); };
+  document.getElementById('actExportExcel').onclick = () => {
+    const rows = filteredActivityRows();
+    const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [['Timestamp', 'Organization', 'Action By', 'Role', 'Action Type', 'Details', 'Affected Records'],
+      ...rows.map(r => [activityTimestamp(r.performed_at), r.company_name, r.actor_name, r.actor_role, [r.category, r.action].filter(Boolean).join(' · '), r.detail, r.affected_records])]
+      .map(line => line.map(cell).join(',')).join('\r\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = 'registry-activity.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+  document.getElementById('actExportPdf').onclick = () => window.print();
+  loadActivityRows();
 }
 
 async function renderRegistryInvite() {

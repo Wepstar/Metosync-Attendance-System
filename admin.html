@@ -235,7 +235,7 @@ function renderDashboard() {
     </div>
     <div id="tabContent"><p class="text-gray-400 text-center mt-10">Loading…</p></div>`;
 
-  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; render(); };
+  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; companyStaffUnlocked = false; Object.keys(sectionUnlocks).forEach(k => delete sectionUnlocks[k]); render(); };
   document.querySelectorAll('.tabBtn').forEach(btn => {
     btn.onclick = () => { activeTab = btn.dataset.tab; renderTabContent(); };
   });
@@ -248,18 +248,63 @@ async function renderTabContent() {
     btn.className = `tabBtn mt-tab ${btn.dataset.tab === activeTab ? 'active' : ''}`;
   });
 
+  if (activeTab !== 'attendance') clearAttendanceAutoRefresh();
   if (activeTab === 'executive') return renderExecutive(el);
-  if (activeTab === 'sites') return renderSites(el);
-  if (activeTab === 'staff') return renderStaff(el);
-  if (activeTab === 'attendance') return renderAttendance(el);
-  clearAttendanceAutoRefresh();
-  if (activeTab === 'payroll') return renderPayroll(el);
-  if (activeTab === 'records') return renderRecords(el);
-  if (activeTab === 'supplies') return renderSupplies(el);
-  if (activeTab === 'settings') return renderSettings(el);
+  if (activeTab === 'sites') return guardSection(el, 'sites', renderSites);
+  if (activeTab === 'staff') return guardSection(el, 'staff', renderStaff);
+  if (activeTab === 'attendance') return guardSection(el, 'attendance', renderAttendance);
+  if (activeTab === 'payroll') return guardSection(el, 'payroll', renderPayroll);
+  if (activeTab === 'records') return guardSection(el, 'records', renderRecords);
+  if (activeTab === 'supplies') return guardSection(el, 'supplies', renderSupplies);
+  if (activeTab === 'settings') return guardSection(el, 'settings', renderSettings);
   if (activeTab === 'contact') return renderContact(el);
 
   el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
+}
+
+// ===== SECTION PASSWORD GATES =====
+
+const SECTION_LABELS = { staff: 'Staff', sites: 'Sites', attendance: 'Attendance', payroll: 'Payroll', records: 'Records', supplies: 'Supplies & Equipment', settings: 'Settings' };
+const sectionUnlocks = {};
+
+async function guardSection(el, code, renderFn) {
+  if (sectionUnlocks[code]) return renderFn(el);
+  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading…</p>`;
+  const { data, error } = await sb.rpc('company_section_password_is_set', { p_company_id: myProfile.company_id, p_section_code: code });
+  if (error || data !== true) { sectionUnlocks[code] = true; return renderFn(el); }
+  renderSectionGate(el, code, renderFn);
+}
+
+function renderSectionGate(el, code, renderFn) {
+  const isDirector = ['owner', 'executive_director'].includes(myProfile.role);
+  const label = SECTION_LABELS[code] || 'This section';
+  el.innerHTML = `<div class="mt-card p-6 max-w-md mx-auto mt-6 mt-fade-in">
+    <h2 class="font-medium mb-1">🔒 ${escapeHtml(label)}</h2>
+    <p class="text-sm text-gray-500 mb-4">This department is protected by a password. Enter it to continue.</p>
+    <input id="secPassword" type="password" placeholder="Department password" class="block w-full border rounded-lg px-3 py-2 text-sm mb-2" autocomplete="off">
+    <p id="secGateError" class="text-red-600 text-sm mb-2"></p>
+    <button id="secUnlockBtn" type="button" class="mt-btn-primary w-full">Unlock</button>
+    ${isDirector ? `<div class="border-t mt-4 pt-4" style="border-color:var(--mt-border)"><p class="text-xs text-gray-500 mb-2">Director options — you can unlock with any password, or set a new one below.</p><div class="flex gap-2"><input id="secNewPassword" type="password" placeholder="New department password" class="flex-1 border rounded-lg px-3 py-2 text-sm" autocomplete="off"><button id="secSetPasswordBtn" type="button" class="mt-btn-outline text-sm">Set/change password</button></div><p id="secSetMsg" class="text-sm mt-2"></p></div>` : ''}
+  </div>`;
+  const input = document.getElementById('secPassword');
+  const tryUnlock = async () => {
+    const errorEl = document.getElementById('secGateError');
+    const { data, error } = await sb.rpc('verify_company_section_password', { p_company_id: myProfile.company_id, p_section_code: code, p_password: input.value });
+    if (error) { errorEl.textContent = error.message; return; }
+    if (data === true || (data && data.ok)) { sectionUnlocks[code] = true; renderFn(el); return; }
+    errorEl.textContent = 'That password is not correct.';
+  };
+  document.getElementById('secUnlockBtn').onclick = tryUnlock;
+  input.onkeydown = e => { if (e.key === 'Enter') tryUnlock(); };
+  const setBtn = document.getElementById('secSetPasswordBtn');
+  if (setBtn) setBtn.onclick = async () => {
+    const msg = document.getElementById('secSetMsg');
+    const pw = document.getElementById('secNewPassword').value;
+    if (!pw) { msg.className = 'text-sm mt-2 text-red-600'; msg.textContent = 'Type a new password first.'; return; }
+    const { error } = await sb.rpc('set_company_section_password', { p_company_id: myProfile.company_id, p_section_code: code, p_password: pw });
+    msg.className = `text-sm mt-2 ${error ? 'text-red-600' : 'text-green-700'}`;
+    msg.textContent = error ? error.message : 'Department password updated.';
+  };
 }
 
 function toRad(deg) { return deg * (Math.PI / 180); }
