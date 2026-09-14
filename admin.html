@@ -253,12 +253,14 @@ function renderDashboard() {
     </div>
     <div id="tabContent"><p class="text-gray-400 text-center mt-10">Loading…</p></div>`;
 
-  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; companyStaffUnlocked = false; Object.keys(sectionUnlocks).forEach(k => delete sectionUnlocks[k]); render(); };
+  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; companyStaffUnlocked = false; Object.keys(sectionUnlocks).forEach(k => delete sectionUnlocks[k]); Object.keys(tabSnapshots).forEach(k => delete tabSnapshots[k]); render(); };
   document.querySelectorAll('.tabBtn').forEach(btn => {
     btn.onclick = () => { activeTab = btn.dataset.tab; renderTabContent(); };
   });
   renderTabContent();
 }
+
+const tabSnapshots = {};
 
 async function renderTabContent() {
   const el = document.getElementById('tabContent');
@@ -266,18 +268,23 @@ async function renderTabContent() {
     btn.className = `tabBtn mt-tab ${btn.dataset.tab === activeTab ? 'active' : ''}`;
   });
 
-  if (activeTab !== 'attendance') clearAttendanceAutoRefresh();
-  if (activeTab === 'executive') return renderExecutive(el);
-  if (activeTab === 'sites') return guardSection(el, 'sites', renderSites);
-  if (activeTab === 'staff') return guardSection(el, 'staff', renderStaff);
-  if (activeTab === 'attendance') return guardSection(el, 'attendance', renderAttendance);
-  if (activeTab === 'payroll') return guardSection(el, 'payroll', renderPayroll);
-  if (activeTab === 'records') return guardSection(el, 'records', renderRecords);
-  if (activeTab === 'supplies') return guardSection(el, 'supplies', renderSupplies);
-  if (activeTab === 'settings') return guardSection(el, 'settings', renderSettings);
-  if (activeTab === 'contact') return renderContact(el);
+  if (tabSnapshots[activeTab]) el.innerHTML = tabSnapshots[activeTab];
 
-  el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`;
+  if (activeTab !== 'attendance') clearAttendanceAutoRefresh();
+  let job;
+  if (activeTab === 'executive') job = renderExecutive(el);
+  else if (activeTab === 'sites') job = guardSection(el, 'sites', renderSites);
+  else if (activeTab === 'staff') job = guardSection(el, 'staff', renderStaff);
+  else if (activeTab === 'attendance') job = guardSection(el, 'attendance', renderAttendance);
+  else if (activeTab === 'payroll') job = guardSection(el, 'payroll', renderPayroll);
+  else if (activeTab === 'records') job = guardSection(el, 'records', renderRecords);
+  else if (activeTab === 'supplies') job = guardSection(el, 'supplies', renderSupplies);
+  else if (activeTab === 'settings') job = guardSection(el, 'settings', renderSettings);
+  else if (activeTab === 'contact') job = renderContact(el);
+  else { el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`; }
+
+  await job;
+  if (document.getElementById('tabContent') === el && activeTab !== 'executive') tabSnapshots[activeTab] = el.innerHTML;
 }
 
 // ===== SECTION PASSWORD GATES =====
@@ -287,7 +294,7 @@ const sectionUnlocks = {};
 
 async function guardSection(el, code, renderFn) {
   if (sectionUnlocks[code]) return renderFn(el);
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading…</p>`;
   const { data, error } = await sb.rpc('company_section_password_is_set', { p_company_id: myProfile.company_id, p_section_code: code });
   if (error || data !== true) { sectionUnlocks[code] = true; return renderFn(el); }
   renderSectionGate(el, code, renderFn);
@@ -513,7 +520,7 @@ async function loadPayrollContext() {
 }
 
 async function renderPayroll(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading payroll…</p>`;
   try { payrollState = { ...payrollState, ...await loadPayrollContext(), previews: new Map() }; } catch (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
 
   let content = '';
@@ -1035,7 +1042,7 @@ function wirePayrollBudgets(el) {
 // ===== SITES =====
 
 async function renderSites(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading sites…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading sites…</p>`;
   const { data, error } = await sb.from('sites').select('*').eq('company_id', myProfile.company_id).order('country').order('created_at', { ascending: false });
   if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${error.message}</p>`; return; }
   sites = data;
@@ -1218,7 +1225,7 @@ function bulkResultsHtml() {
 }
 
 async function renderStaff(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading staff…</p>`;
   const [{ data: sitesData, error: sitesErr }, { data: staffData, error: staffErr }] = await Promise.all([
     sb.from('sites').select('*').eq('company_id', myProfile.company_id).order('country'),
     sb.from('staff').select('*, sites(name, country), pending_device_fingerprint, device_fingerprint, device_approved_at').eq('company_id', myProfile.company_id).order('created_at', { ascending: false })
@@ -1800,7 +1807,7 @@ async function renderAttendance(el) {
     return renderNotificationsAdmin(document.getElementById('attSub'));
   }
   attendanceSubTab = 'daily';
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading attendance…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading attendance…</p>`;
   const yesterday = new Date(`${attendanceDate}T00:00:00`);
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayDate = yesterday.toISOString().slice(0, 10);
@@ -2586,7 +2593,7 @@ function recordTemplateMeta(template) {
 }
 
 async function renderRecords(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading records…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading records…</p>`;
   const { data, error } = await sb.rpc('list_document_templates', { p_company_id: myProfile.company_id });
   if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
   recordsTemplates = Array.isArray(data) ? data : [];
@@ -2662,7 +2669,7 @@ let suppliesCategoryFilter = '';
 let suppliesEditingId = null;
 
 async function renderSupplies(el) {
-  el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading supplies…</p>`;
+  if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading supplies…</p>`;
   const { data, error } = await sb.rpc('list_office_supplies', { p_company_id: myProfile.company_id, p_category: suppliesCategoryFilter || null });
   if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
   const items = Array.isArray(data) ? data : [];
