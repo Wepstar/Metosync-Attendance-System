@@ -41,6 +41,21 @@
   .tpl-check { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; background: var(--tc); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; opacity: 0; transform: scale(.3); transition: all .28s cubic-bezier(.34,1.56,.64,1); box-shadow: 0 3px 8px rgba(0,0,0,.25); }
   .templateCard.selected .tpl-check { opacity: 1; transform: scale(1); }
   @keyframes tplIn { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+  .mt-rail { display: none; }
+  @media (min-width: 1440px) {
+    .mt-rail:not(:empty) { display: block; position: fixed; left: max(14px, calc(50% - 710px)); top: 150px; width: 252px; z-index: 30; }
+  }
+  .rail-card { background: #fff; border: 1px solid var(--mt-border); border-radius: 18px; padding: 18px 16px; box-shadow: 0 10px 26px -14px rgba(13,42,77,.28); }
+  .rail-title { font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #0d2a4d; text-transform: uppercase; margin-bottom: 16px; }
+  .rail-step { display: flex; align-items: flex-start; gap: 10px; position: relative; padding-bottom: 16px; }
+  .rail-step:last-child { padding-bottom: 0; }
+  .rail-step::before { content: ''; position: absolute; left: 15px; top: 34px; bottom: 0; width: 2px; background: linear-gradient(#0d2a4d, #e6eef7); }
+  .rail-step:last-child::before { display: none; }
+  .rail-num { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #0d2a4d, #1a4a7a); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 10px -4px rgba(13,42,77,.5); }
+  .rail-body { flex: 1; min-width: 0; padding-top: 2px; }
+  .rail-body b { display: block; font-size: 12.5px; color: #0d2a4d; font-weight: 700; letter-spacing: .02em; }
+  .rail-body span { display: block; font-size: 11.5px; color: #8a97a3; margin-top: 2px; line-height: 1.45; }
+  .rail-ico { font-size: 17px; opacity: .45; padding-top: 4px; flex-shrink: 0; }
 </style>
 </head>
 <body class="min-h-screen" style="background: var(--mt-bg);">
@@ -251,7 +266,8 @@ function renderDashboard() {
     <div class="flex flex-wrap gap-1 mb-4 mt-card p-1">
       ${tabs.map(t => `<button class="tabBtn mt-tab ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
     </div>
-    <div id="tabContent"><p class="text-gray-400 text-center mt-10">Loading…</p></div>`;
+    <div id="tabContent"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
+    <aside id="sideRail" class="mt-rail"></aside>`;
 
   document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; companyStaffUnlocked = false; Object.keys(sectionUnlocks).forEach(k => delete sectionUnlocks[k]); Object.keys(tabSnapshots).forEach(k => delete tabSnapshots[k]); render(); };
   document.querySelectorAll('.tabBtn').forEach(btn => {
@@ -262,11 +278,29 @@ function renderDashboard() {
 
 const tabSnapshots = {};
 
+const RAIL_CONTENT = {
+  staff: `
+    <div class="rail-card mt-fade-in">
+      <div class="rail-title">Add Staff — Quick Guide</div>
+      <div class="rail-step"><div class="rail-num">1</div><div class="rail-body"><b>PICK STAFF TYPE</b><span>Permanent, or Laborer / Casual Worker.</span></div><div class="rail-ico">👷</div></div>
+      <div class="rail-step"><div class="rail-num">2</div><div class="rail-body"><b>FILL THE BASICS</b><span>Full name, mobile number, and upload a photo.</span></div><div class="rail-ico">👤</div></div>
+      <div class="rail-step"><div class="rail-num">3</div><div class="rail-body"><b>ROLE, SITE &amp; PIN</b><span>Department and role, pick their country &amp; site, and set a 4-digit PIN for check-in.</span></div><div class="rail-ico">🏗️</div></div>
+      <div class="rail-step"><div class="rail-num">4</div><div class="rail-body"><b>SET THE PAY</b><span>Daily weekday/weekend rates, or a fixed salary.</span></div><div class="rail-ico">💰</div></div>
+      <div class="rail-step"><div class="rail-num">5</div><div class="rail-body"><b>TAP ADD STAFF</b><span>They appear in the Staff Catalog below and can sign in with their PIN.</span></div><div class="rail-ico">✅</div></div>
+    </div>`,
+};
+
+function updateSideRail() {
+  const rail = document.getElementById('sideRail');
+  if (rail) rail.innerHTML = RAIL_CONTENT[activeTab] || '';
+}
+
 async function renderTabContent() {
   const el = document.getElementById('tabContent');
   document.querySelectorAll('.tabBtn').forEach(btn => {
     btn.className = `tabBtn mt-tab ${btn.dataset.tab === activeTab ? 'active' : ''}`;
   });
+  updateSideRail();
 
   if (tabSnapshots[activeTab]) el.innerHTML = tabSnapshots[activeTab];
 
