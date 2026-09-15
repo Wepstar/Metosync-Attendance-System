@@ -229,6 +229,20 @@ This document is written for Watchguard (and future AI agents) so they can under
 - "function does not exist" → supplies RPCs built server-side; deploy + schema reload.
 - Edit saves but name/category look unchanged → by design; those columns are fixed at creation.
 
+### Stores & Inventory Tab (`renderStoresInventory`)
+**What it does**
+- Main tab: **Stores & Inventory**, with sub-tabs Suppliers / Items / Item In / Item Out / Purchase Orders.
+- **Suppliers** — `list_suppliers`, `add_supplier`, `update_supplier` (deactivate/reactivate via `p_is_active`).
+- **Items** — `list_inventory_items` shows name, SKU, unit, and current quantity. Items at or below `reorder_level` show a red "⚠ Running low" warning with the reorder-at figure. Add/edit use `add_inventory_item` / `update_inventory_item`.
+- **Item In / Item Out** — `record_stock_movement(p_item_id, p_movement_type, p_quantity, p_reference, p_supplier_id)`. Item In can tag a supplier; Item Out pre-checks available quantity and turns the backend insufficient-stock error into "Not enough stock for this quantity.".
+- **Purchase Orders** — `list_purchase_orders` (all statuses), `create_purchase_order(p_company_id, p_supplier_id, p_expected_date, p_items)` where `p_items` is an array of `{item_id, quantity, unit_cost}`, and `receive_purchase_order(p_po_id)` which marks the order received and updates stock automatically. UI text explicitly warns users not to also record an Item In after marking received.
+
+**What can go wrong**
+- "function does not exist" → stores RPCs built server-side; deploy + `SELECT pg_notify('pgrst', 'reload schema');`.
+- Purchase order line items fail to save → `p_items` must be a JSON array of objects with `item_id`, `quantity`, and `unit_cost`; the frontend passes a JS array.
+- "Not enough stock" on Item Out → the backend validates; try a smaller quantity or record an Item In first.
+- Mark received doesn't add stock → `receive_purchase_order` is server-side; if stock stays unchanged, the function may have errored (check Edge/PostgREST logs).
+
 ### Team Invites (`platform.html` → Registry → ✉️ Team Invite)
 **What it does**
 - The only place team invites are created. The company-side "Invite Team" screen was removed from `admin.html` — `admin_create_invite` no longer permits company accounts.
