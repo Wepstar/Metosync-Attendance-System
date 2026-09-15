@@ -2661,17 +2661,53 @@ let recordsTemplates = [];
 let recordsSelectedTemplate = null;
 let recordsFilterType = '';
 
+function recordTableCellInput(c) {
+  const key = escapeHtml(c.key || '');
+  const type = (c.type || 'text').toLowerCase();
+  const cls = 'w-full border rounded px-2 py-1 text-sm';
+  if (type === 'number') return `<input type="number" step="any" class="${cls}" data-col-key="${key}" data-col-type="number" placeholder="0">`;
+  if (type === 'date') return `<input type="date" class="${cls}" data-col-key="${key}" data-col-type="date">`;
+  if (type === 'textarea') return `<textarea rows="1" class="${cls}" data-col-key="${key}" data-col-type="textarea"></textarea>`;
+  return `<input type="text" class="${cls}" data-col-key="${key}" data-col-type="text" placeholder="${escapeHtml(c.label || '')}">`;
+}
+
 function recordFieldInput(field) {
   const key = escapeHtml(field.key || field.name || '');
   const label = escapeHtml(field.label || field.key || field.name || 'Field');
   const type = (field.type || 'text').toLowerCase();
   const cls = 'block w-full border rounded-lg px-3 py-2 mt-1 text-sm';
-  if (type === 'textarea') return `<label class="text-sm">${label}<textarea data-field-key="${key}" rows="3" class="${cls}"></textarea></label>`;
-  if (type === 'date') return `<label class="text-sm">${label}<input data-field-key="${key}" type="date" class="${cls}"></label>`;
-  if (type === 'number') return `<label class="text-sm">${label}<input data-field-key="${key}" type="number" step="any" class="${cls}"></label>`;
-  if (type === 'select' && Array.isArray(field.options)) return `<label class="text-sm">${label}<select data-field-key="${key}" class="${cls}">${field.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></label>`;
-  if (type === 'checkbox' || type === 'boolean') return `<label class="text-sm flex items-center gap-2 mt-1"><input data-field-key="${key}" type="checkbox"> ${label}</label>`;
-  return `<label class="text-sm">${label}<input data-field-key="${key}" type="text" class="${cls}"></label>`;
+  if (type === 'table') {
+    let columns = Array.isArray(field.columns) ? field.columns : (typeof field.columns === 'string' ? (() => { try { return JSON.parse(field.columns); } catch (e) { return []; } })() : []);
+    const headerCells = columns.map(c => `<th class="text-left px-2 py-1 text-xs font-medium text-gray-500">${escapeHtml(c.label || c.key)}</th>`).join('');
+    const firstRow = columns.map(c => `<td class="px-2 py-1">${recordTableCellInput(c)}</td>`).join('') + `<td class="px-2 py-1 text-right"><button type="button" class="remove-row-btn text-red-500 text-lg leading-none" title="Remove">×</button></td>`;
+    return `<div data-field-key="${key}" data-field-type="table" data-columns="${escapeHtml(JSON.stringify(columns))}" class="sm:col-span-2 table-field mt-3">
+      <p class="text-sm font-medium mb-2">${label}</p>
+      <div class="overflow-x-auto border rounded-lg" style="border-color:var(--mt-border)">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50"><tr>${headerCells}<th></th></tr></thead>
+          <tbody class="table-rows">${firstRow}</tbody>
+        </table>
+      </div>
+      <button type="button" class="add-row-btn mt-2 text-sm text-blue-600" data-table-key="${key}">+ Add row</button>
+    </div>`;
+  }
+  if (type === 'rich_text') {
+    return `<div data-field-key="${key}" data-field-type="rich" class="sm:col-span-2 rich-field mt-3">
+      <p class="text-sm font-medium mb-1">${label}</p>
+      <div class="rich-toolbar flex items-center gap-1 mb-2">
+        <button type="button" class="rich-btn border rounded px-2 py-1 text-xs" data-cmd="bold"><b>B</b></button>
+        <button type="button" class="rich-btn border rounded px-2 py-1 text-xs" data-cmd="italic"><i>I</i></button>
+        <select class="rich-size border rounded px-2 py-1 text-xs"><option value="">Size</option><option value="1">Small</option><option value="3">Normal</option><option value="5">Large</option><option value="7">Huge</option></select>
+      </div>
+      <div contenteditable="true" class="rich-editor border rounded-lg px-3 py-2 text-sm min-h-[80px] outline-none" style="border-color:var(--mt-border)"></div>
+    </div>`;
+  }
+  if (type === 'textarea') return `<label class="text-sm">${label}<textarea data-field-key="${key}" data-field-type="textarea" rows="3" class="${cls}"></textarea></label>`;
+  if (type === 'date') return `<label class="text-sm">${label}<input data-field-key="${key}" data-field-type="date" type="date" class="${cls}"></label>`;
+  if (type === 'number') return `<label class="text-sm">${label}<input data-field-key="${key}" data-field-type="number" type="number" step="any" class="${cls}"></label>`;
+  if (type === 'select' && Array.isArray(field.options)) return `<label class="text-sm">${label}<select data-field-key="${key}" data-field-type="select" class="${cls}">${field.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></label>`;
+  if (type === 'checkbox' || type === 'boolean') return `<label class="text-sm flex items-center gap-2 mt-1"><input data-field-key="${key}" data-field-type="checkbox" type="checkbox"> ${label}</label>`;
+  return `<label class="text-sm">${label}<input data-field-key="${key}" data-field-type="text" type="text" class="${cls}"></label>`;
 }
 
 function recordTemplateMeta(template) {
@@ -2729,14 +2765,80 @@ function renderRecordForm(el, template) {
     <p id="recordFormMsg" class="text-sm mb-2"></p>
     <button id="submitRecordBtn" type="button" class="mt-btn-primary">Save Record</button>
   </div>`;
+
+  area.querySelectorAll('.add-row-btn').forEach(btn => {
+    btn.onclick = () => {
+      const wrapper = btn.closest('.table-field');
+      const columns = JSON.parse(wrapper.dataset.columns || '[]');
+      const tr = document.createElement('tr');
+      tr.innerHTML = columns.map(c => `<td class="px-2 py-1">${recordTableCellInput(c)}</td>`).join('') + `<td class="px-2 py-1 text-right"><button type="button" class="remove-row-btn text-red-500 text-lg leading-none" title="Remove">×</button></td>`;
+      wrapper.querySelector('tbody').appendChild(tr);
+    };
+  });
+  area.querySelectorAll('.rich-size').forEach(sel => {
+    sel.onchange = () => {
+      const editor = sel.closest('.rich-field').querySelector('.rich-editor');
+      editor.focus();
+      if (sel.value) document.execCommand('fontSize', false, sel.value);
+    };
+  });
+  area.addEventListener('click', e => {
+    const richBtn = e.target.closest('.rich-btn');
+    if (richBtn) {
+      const editor = richBtn.closest('.rich-field').querySelector('.rich-editor');
+      editor.focus();
+      document.execCommand(richBtn.dataset.cmd, false, null);
+      return;
+    }
+    const rm = e.target.closest('.remove-row-btn');
+    if (rm) rm.closest('tr').remove();
+  });
+
   document.getElementById('submitRecordBtn').onclick = async () => {
     const msg = document.getElementById('recordFormMsg');
     const data = {};
-    area.querySelectorAll('[data-field-key]').forEach(input => { data[input.dataset.fieldKey] = input.type === 'checkbox' ? input.checked : input.value; });
+    area.querySelectorAll('[data-field-key]').forEach(el => {
+      const type = el.dataset.fieldType;
+      const k = el.dataset.fieldKey;
+      if (type === 'table') {
+        data[k] = [];
+        el.querySelectorAll('tbody tr').forEach(tr => {
+          const row = {};
+          tr.querySelectorAll('td [data-col-key]').forEach(inp => {
+            const ct = inp.dataset.colType;
+            row[inp.dataset.colKey] = ct === 'number' ? (inp.value ? Number(inp.value) : 0) : inp.value;
+          });
+          data[k].push(row);
+        });
+      } else if (type === 'rich') {
+        data[k] = el.querySelector('.rich-editor').innerHTML;
+      } else if (el.type === 'checkbox' || type === 'checkbox' || type === 'boolean') {
+        data[k] = el.checked;
+      } else if (type === 'number') {
+        data[k] = el.value ? Number(el.value) : 0;
+      } else {
+        data[k] = el.value;
+      }
+    });
     const { error } = await sb.rpc('submit_document', { p_template_id: template.id, p_data: data });
     msg.className = `text-sm mb-2 ${error ? 'text-red-600' : 'text-green-700'}`;
     msg.textContent = error ? error.message : 'Saved!';
-    if (!error) { area.querySelectorAll('[data-field-key]').forEach(input => { input.value = ''; input.checked = false; }); loadDocumentSubmissions(); }
+    if (!error) {
+      area.querySelectorAll('[data-field-key]').forEach(el => {
+        const type = el.dataset.fieldType;
+        if (type === 'table') {
+          const columns = JSON.parse(el.dataset.columns || '[]');
+          el.querySelector('tbody').innerHTML = columns.map(c => `<td class="px-2 py-1">${recordTableCellInput(c)}</td>`).join('') + `<td class="px-2 py-1 text-right"><button type="button" class="remove-row-btn text-red-500 text-lg leading-none" title="Remove">×</button></td>`;
+        } else if (type === 'rich') {
+          el.querySelector('.rich-editor').innerHTML = '';
+        } else if (el.type === 'checkbox' || type === 'checkbox' || type === 'boolean') {
+          el.checked = false;
+        } else {
+          el.value = '';
+        }
+      });
+      loadDocumentSubmissions();
+    }
   };
 }
 

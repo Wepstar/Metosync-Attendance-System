@@ -221,7 +221,10 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Records Tab (`renderRecords`)
 **What it does**
-- `list_document_templates(p_company_id)` renders the available record types as pick-cards (Meeting Minutes, Incident Report, Work Handover, Daily Action Planner are seeded). Selecting one builds the form **from that template's `field_schema`** — each `{key, label, type}` renders as text/textarea/date/number/select/checkbox; nothing is hardcoded per template.
+- `list_document_templates(p_company_id)` renders the available record types as pick-cards. Selecting one builds the form **from that template's `field_schema`** — each `{key, label, type}` renders generically; nothing is hardcoded per template.
+  - Supported types: `text`, `textarea`, `date`, `number`, `select` (with `options`), `checkbox`/`boolean`, `table` (with `columns` of `text`/`number`/`date`), and `rich_text` (lightweight WYSIWYG with bold/italic/size).
+  - `table` fields render an editable table with **Add row** / **Remove row**; the submitted value is an array of row objects keyed by `columns[*].key`.
+  - `rich_text` fields store the editor HTML.
 - Save calls `submit_document(p_template_id, p_data)` — `p_data` is a JSON object keyed by field key.
 - "View records" calls `list_document_submissions(p_company_id, p_template_type)` (`null` = all types), filterable by the type dropdown; each entry renders as a card with its stored key/value pairs.
 

@@ -413,6 +413,36 @@ Check items off as they're completed. This file is the actual answer to
 - [x] All tables confirmed empty pre-launch — this was caught before any
       real data existed, not a live production bug
 
+## 🎯 Current priority: ship Phase 1, then continue as upgrades
+
+- [x] **Decided**: finish Executive Director, Administrator, and Finance &
+      Payroll completely (not just "backend built, prompt sent") before
+      continuing Phase 2. Ship Phase 1 for real use, then keep building
+      Phase 2+ as upgrades afterward. Logistics (Operations Manager)
+      remains deferred, not skipped or abandoned.
+- [x] **Honest gap in this tracker, now addressed**: everything above
+      marked done only means "backend built and secured, Devin prompt
+      sent" — it does NOT mean Devin finished the frontend or that it
+      actually works. Verified what's actually checkable via direct page
+      fetch (can't see behind the authenticated admin dashboard, but can
+      confirm routing/redirects):
+  - [x] `payroll.html` confirmed converted — redirects cleanly to
+        `admin.html?tab=payroll&sub=general`
+  - [x] `taxes.html` confirmed converted — redirects to
+        `admin.html?tab=payroll&sub=taxes`
+  - [ ] **`review.html` NOT yet converted** — still the old standalone
+        page with its own window chrome, not redirecting. The container/
+        layout fix is 2 of 3 done, not complete. Needs following up with
+        Devin specifically on this one file.
+  - [x] Side-confirmed: Flutterwave genuinely gone from the payment
+        options shown on the (still-standalone) review.html — only Bank
+        account / Mobile money appear, as intended.
+- [ ] **Next real step**: go through every other Phase 1 Devin prompt sent
+      and confirm actual completion the same way — either via direct
+      verification where the page allows it, or by the user testing behind
+      login and reporting back, since most content sits behind
+      authentication I can't see past.
+
 ## ⬜ Phase 1 — Foundation
 
 **Note**: the Attendance and Payroll menu work above (Set Status for a Day,
@@ -448,6 +478,18 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
         Handover, Daily Action Planner. Scoped to admin-created records for
         this pass; staff self-submission (e.g. a staff-filed incident
         report) is a natural follow-up, not built yet.
+  - [x] **Extended field_schema with two new field types** (no schema
+        change needed — field_schema/submission data are already flexible
+        JSON, this is a convention Devin's rendering needs to support):
+        `"table"` (repeating rows with sub-columns, e.g. Price List's
+        items) and `"rich_text"` (formatting controls — bold, italic,
+        font size — stored as an HTML string).
+  - [x] Added 4 more templates using the new types, from user-provided
+        reference images: Price List, Profit & Loss Statement (P&L
+        requires approval, unlike the others), Daily Cash Report, Weekly
+        Expense Tracker (7 separate daily tables). 8 templates total now.
+  - [ ] Devin: extend the Records tab's form-rendering to handle `"table"`
+        and `"rich_text"` generically (not per-template) — prompt below
   - [x] **Supplies & Equipment built**, using the working assumption above
         (lightweight internal office tracker — stationery, furniture,
         equipment assigned to staff): `add_office_supply`,
@@ -521,7 +563,20 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
         creates the matching stock-in movements for every line item on
         receipt — no separate manual step needed)
   - [ ] Devin: build the Stores & Inventory workspace UI — prompt below
-- [ ] Operations Manager workspace
+- [~] **Operations Manager workspace** — Projects + Tasks built (the
+      clearly-scoped core), "logistics" deliberately not built yet
+  - [x] Projects: `create_project`, `list_projects` (with status filter),
+        `update_project_status` — reuses existing `sites` for location
+  - [x] Tasks: `add_project_task`, `list_project_tasks`,
+        `update_task_status` — reuses existing `staff` for assignment
+  - [x] "Field staff" scope covered by reusing existing staff/site
+        assignment + `admin_get_latest_locations` (built for Attendance)
+        rather than duplicating location tracking here
+  - [ ] **"Logistics" not built — too vague to build without guessing**:
+        could mean delivery/route tracking, vehicle management, or just
+        broader task scheduling. Needs a concrete definition from the
+        user before building, same treatment as Budgets earlier.
+  - [ ] Devin: build the Projects + Tasks UI — prompt below
 - [ ] Sales & Marketing workspace
 
 ## ⬜ Phase 3 — Support & Growth
