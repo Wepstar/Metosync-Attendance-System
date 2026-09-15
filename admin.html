@@ -26,9 +26,9 @@
   .tabBtn.active { background: #0d2a4d; color: #fff; border-bottom-color: #f59e0b; box-shadow: 0 8px 18px -8px rgba(13,42,77,.55); }
   .payroll-subtabs { margin: 1rem 0; }
   .payroll-subtabs .mt-tab.active { background: #0d2a4d; color: white; }
-  .payroll-subtabs .mt-tab[data-payroll-tab], .payroll-subtabs .mt-tab[data-attendance-tab] { --tc: #0d2a4d; border-radius: 12px; font-weight: 600; padding: .55rem 1rem; color: var(--tc); background: #eef3f6; background: color-mix(in srgb, var(--tc) 10%, #fff); border: 1px solid transparent; border-color: color-mix(in srgb, var(--tc) 22%, transparent); transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease; }
-  .payroll-subtabs .mt-tab[data-payroll-tab]:hover, .payroll-subtabs .mt-tab[data-attendance-tab]:hover { transform: translateY(-2px); box-shadow: 0 8px 18px -8px var(--tc); }
-  .payroll-subtabs .mt-tab[data-payroll-tab].active, .payroll-subtabs .mt-tab[data-attendance-tab].active { background: var(--tc); color: #fff; border-color: var(--tc); box-shadow: 0 8px 18px -8px var(--tc); }
+  .payroll-subtabs .mt-tab[data-payroll-tab], .payroll-subtabs .mt-tab[data-attendance-tab], .payroll-subtabs .mt-tab[data-stores-tab] { --tc: #0d2a4d; border-radius: 12px; font-weight: 600; padding: .55rem 1rem; color: var(--tc); background: #eef3f6; background: color-mix(in srgb, var(--tc) 10%, #fff); border: 1px solid transparent; border-color: color-mix(in srgb, var(--tc) 22%, transparent); transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease; }
+  .payroll-subtabs .mt-tab[data-payroll-tab]:hover, .payroll-subtabs .mt-tab[data-attendance-tab]:hover, .payroll-subtabs .mt-tab[data-stores-tab]:hover { transform: translateY(-2px); box-shadow: 0 8px 18px -8px var(--tc); }
+  .payroll-subtabs .mt-tab[data-payroll-tab].active, .payroll-subtabs .mt-tab[data-attendance-tab].active, .payroll-subtabs .mt-tab[data-stores-tab].active { background: var(--tc); color: #fff; border-color: var(--tc); box-shadow: 0 8px 18px -8px var(--tc); }
   .templateCard { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; overflow: hidden; background: #fff; border: 1px solid var(--mt-border); border-left: 4px solid var(--tc, #0d2a4d); border-radius: 16px; padding: 14px 16px; cursor: pointer; text-align: left; box-shadow: 0 1px 3px rgba(13,42,77,.06); transition: transform .2s cubic-bezier(.2,.7,.3,1.2), box-shadow .2s ease, border-color .2s ease; animation: tplIn .4s cubic-bezier(.2,.7,.3,1) both; }
   .templateCard::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--tc), transparent 70%); opacity: .5; }
   .templateCard:hover { transform: translateY(-2px) scale(1.01); border-color: var(--tc); box-shadow: 0 12px 26px -12px var(--tc); }
@@ -249,6 +249,7 @@ function renderDashboard() {
     plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
     { id: 'records', label: 'Records' },
     { id: 'supplies', label: 'Supplies' },
+    { id: 'stores', label: 'Stores & Inventory' },
     can('manage_settings') ? { id: 'settings', label: 'Settings' } : null,
     { id: 'contact', label: 'Contact & Support' },
   ].filter(Boolean);
@@ -282,7 +283,7 @@ let renderToken = 0;
 
 function wrapWithToken(el, token) {
   return new Proxy(el, {
-    get(target, prop) { return prop === 'innerHTML' ? target.innerHTML : target[prop]; },
+    get(target, prop) { const v = target[prop]; return typeof v === 'function' ? v.bind(target) : v; },
     set(target, prop, value) {
       if (prop === 'innerHTML' && token !== renderToken) return true;
       target[prop] = value;
@@ -375,6 +376,7 @@ async function renderTabContent() {
   else if (targetTab === 'payroll') job = guardSection(el, 'payroll', renderPayroll);
   else if (targetTab === 'records') job = guardSection(el, 'records', renderRecords);
   else if (targetTab === 'supplies') job = guardSection(el, 'supplies', renderSupplies);
+  else if (targetTab === 'stores') job = renderStoresInventory(el);
   else if (targetTab === 'settings') job = guardSection(el, 'settings', renderSettings);
   else if (targetTab === 'contact') job = renderContact(el);
   else { el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`; job = Promise.resolve(); }
@@ -2361,6 +2363,7 @@ async function renderLeave(el) {
 
 // ===== EXECUTIVE =====
 let execSubTab = 'overview';
+let storesSubTab = 'suppliers';
 let execReportType = 'attendance';
 let execReportStart = '';
 let execReportEnd = '';
@@ -3007,6 +3010,468 @@ function renderContact(el) {
       <p class="text-sm"><a href="mailto:metosync.reports@gmail.com" class="text-blue-600">metosync.reports@gmail.com</a></p>
       <p class="text-sm"><a href="tel:+233503938430" class="text-blue-600">+233 050 393 8430</a></p>
     </div>`;
+}
+
+// ===== STORES & INVENTORY =====
+
+let storesSupplierEditingId = null;
+let storesItemEditingId = null;
+let storesPOMode = 'list';
+
+function storesSubTabsHtml() {
+  const tab = (id, label, color) => `<button type="button" class="mt-tab ${storesSubTab === id ? 'active' : ''}" data-stores-tab="${id}" style="--tc:${color}">${label}</button>`;
+  return `<div class="payroll-subtabs flex flex-wrap gap-1 mt-card p-1 mt-fade-in">
+    ${tab('suppliers', '01 Suppliers', '#2563eb')}
+    ${tab('items', '02 Items', '#059669')}
+    ${tab('itemin', '03 Item In', '#0891b2')}
+    ${tab('itemout', '04 Item Out', '#f59e0b')}
+    ${tab('orders', '05 Purchase Orders', '#7c3aed')}
+  </div>`;
+}
+
+async function renderStoresInventory(el) {
+  el.innerHTML = `${storesSubTabsHtml()}<div class="stores-content mt-fade-in" id="storesContent"></div>`;
+  const sc = document.getElementById('storesContent');
+  sc.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading stores…</p>`;
+  el.querySelectorAll('[data-stores-tab]').forEach(btn => {
+    btn.onclick = () => { storesSubTab = btn.dataset.storesTab; renderStoresInventory(el); };
+  });
+  if (storesSubTab === 'suppliers') await renderSuppliers(sc);
+  else if (storesSubTab === 'items') await renderItems(sc);
+  else if (storesSubTab === 'itemin') await renderItemIn(sc);
+  else if (storesSubTab === 'itemout') await renderItemOut(sc);
+  else if (storesSubTab === 'orders') await renderPurchaseOrders(sc);
+}
+
+async function renderSuppliers(el) {
+  const { data: list, error } = await sb.rpc('list_suppliers', { p_company_id: myProfile.company_id });
+  if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
+  const suppliers = Array.isArray(list) ? list : [];
+  const editing = storesSupplierEditingId;
+  const rows = suppliers.map(s => {
+    const isEditing = editing === s.id;
+    return `<div class="border-b last:border-b-0 py-3" data-supplier-id="${s.id}">
+      <div class="flex justify-between items-start gap-2">
+        <div class="min-w-0 ${!s.is_active ? 'opacity-60' : ''}">
+          <p class="font-medium text-sm truncate">${escapeHtml(s.name)}</p>
+          <p class="text-xs text-gray-500">${escapeHtml([s.contact_person, s.phone, s.email].filter(Boolean).join(' · ') || 'No contact details')}</p>
+        </div>
+        <div class="flex gap-1 shrink-0">
+          <button type="button" class="supplierEditBtn mt-icon-btn edit" title="Edit" data-id="${s.id}">✎</button>
+          ${s.is_active ? `<button type="button" class="supplierDeactivateBtn mt-icon-btn delete" title="Deactivate" data-id="${s.id}">🚫</button>` : `<button type="button" class="supplierActivateBtn mt-icon-btn" title="Reactivate" data-id="${s.id}">✅</button>`}
+        </div>
+      </div>
+      ${isEditing ? `
+      <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 edit-supplier-form">
+        <input class="supName border rounded-lg px-3 py-2 text-sm" placeholder="Supplier name *" value="${escapeHtml(s.name || '')}">
+        <input class="supContact border rounded-lg px-3 py-2 text-sm" placeholder="Contact person" value="${escapeHtml(s.contact_person || '')}">
+        <input class="supPhone border rounded-lg px-3 py-2 text-sm" placeholder="Phone" value="${escapeHtml(s.phone || '')}">
+        <input class="supEmail border rounded-lg px-3 py-2 text-sm" placeholder="Email" value="${escapeHtml(s.email || '')}">
+        <input class="supAddress border rounded-lg px-3 py-2 text-sm col-span-1 sm:col-span-2" placeholder="Address" value="${escapeHtml(s.address || '')}">
+        <textarea class="supNotes border rounded-lg px-3 py-2 text-sm col-span-1 sm:col-span-2" rows="2" placeholder="Notes">${escapeHtml(s.notes || '')}</textarea>
+        <div class="col-span-1 sm:col-span-2 flex gap-2">
+          <button type="button" class="supplierSaveBtn mt-btn-primary" data-id="${s.id}">Save</button>
+          <button type="button" class="supplierCancelBtn mt-btn-outline">Cancel</button>
+          <span class="supplierMsg text-sm self-center"></span>
+        </div>
+      </div>` : ''}
+    </div>`;
+  }).join('') || '<p class="text-gray-400 text-sm">No suppliers yet.</p>';
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mb-4 mt-fade-in">
+      <h2 class="font-medium mb-3">${editing ? 'Edit Supplier' : 'Add Supplier'}</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input id="newSupName" class="border rounded-lg px-3 py-2 text-sm" placeholder="Supplier name *" value="${editing ? '' : ''}">
+        <input id="newSupContact" class="border rounded-lg px-3 py-2 text-sm" placeholder="Contact person">
+        <input id="newSupPhone" class="border rounded-lg px-3 py-2 text-sm" placeholder="Phone">
+        <input id="newSupEmail" class="border rounded-lg px-3 py-2 text-sm" placeholder="Email">
+        <input id="newSupAddress" class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Address">
+        <textarea id="newSupNotes" class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" rows="2" placeholder="Notes"></textarea>
+      </div>
+      <p id="newSupMsg" class="text-sm mt-2"></p>
+      <button id="addSupplierBtn" type="button" class="mt-btn-primary mt-3">Add Supplier</button>
+    </div>
+    <div class="mt-card p-4 mt-fade-in">
+      <h2 class="font-medium mb-3">Suppliers</h2>
+      ${rows}
+    </div>`;
+
+  document.getElementById('addSupplierBtn').onclick = async () => {
+    const msg = document.getElementById('newSupMsg');
+    const name = document.getElementById('newSupName').value.trim();
+    if (!name) { msg.className = 'text-sm text-red-600 mt-2'; msg.textContent = 'Enter a supplier name.'; return; }
+    const { error } = await sb.rpc('add_supplier', {
+      p_company_id: myProfile.company_id,
+      p_name: name,
+      p_contact_person: document.getElementById('newSupContact').value.trim() || null,
+      p_phone: document.getElementById('newSupPhone').value.trim() || null,
+      p_email: document.getElementById('newSupEmail').value.trim() || null,
+      p_address: document.getElementById('newSupAddress').value.trim() || null,
+      p_notes: document.getElementById('newSupNotes').value.trim() || null
+    });
+    if (error) { msg.className = 'text-sm text-red-600 mt-2'; msg.textContent = error.message; return; }
+    msg.className = 'text-sm text-green-700 mt-2'; msg.textContent = 'Supplier added.';
+    ['newSupName','newSupContact','newSupPhone','newSupEmail','newSupAddress','newSupNotes'].forEach(id => document.getElementById(id).value = '');
+    renderSuppliers(el);
+  };
+
+  el.querySelectorAll('.supplierEditBtn').forEach(btn => {
+    btn.onclick = () => { storesSupplierEditingId = btn.dataset.id; renderSuppliers(el); };
+  });
+  el.querySelectorAll('.supplierCancelBtn').forEach(btn => {
+    btn.onclick = () => { storesSupplierEditingId = null; renderSuppliers(el); };
+  });
+  el.querySelectorAll('.supplierActivateBtn, .supplierDeactivateBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const { error } = await sb.rpc('update_supplier', { p_id: btn.dataset.id, p_is_active: btn.classList.contains('supplierActivateBtn') });
+      if (error) showToast(error.message); else renderSuppliers(el);
+    };
+  });
+  el.querySelectorAll('.supplierSaveBtn').forEach(btn => {
+    const row = el.querySelector(`[data-supplier-id="${btn.dataset.id}"]`);
+    btn.onclick = async () => {
+      const msg = row.querySelector('.supplierMsg');
+      const name = row.querySelector('.supName').value.trim();
+      if (!name) { msg.className = 'text-sm text-red-600'; msg.textContent = 'Name required.'; return; }
+      const { error } = await sb.rpc('update_supplier', {
+        p_id: btn.dataset.id,
+        p_name: name,
+        p_contact_person: row.querySelector('.supContact').value.trim() || null,
+        p_phone: row.querySelector('.supPhone').value.trim() || null,
+        p_email: row.querySelector('.supEmail').value.trim() || null,
+        p_address: row.querySelector('.supAddress').value.trim() || null,
+        p_notes: row.querySelector('.supNotes').value.trim() || null
+      });
+      if (error) { msg.className = 'text-sm text-red-600'; msg.textContent = error.message; return; }
+      storesSupplierEditingId = null;
+      renderSuppliers(el);
+    };
+  });
+}
+
+async function renderItems(el) {
+  const { data: list, error } = await sb.rpc('list_inventory_items', { p_company_id: myProfile.company_id });
+  if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
+  const items = Array.isArray(list) ? list : [];
+  const editing = storesItemEditingId;
+  const cards = items.map(it => {
+    const isLow = it.current_quantity != null && it.reorder_level != null && Number(it.current_quantity) <= Number(it.reorder_level);
+    const isEditing = editing === it.id;
+    return `<div class="border rounded-xl p-3 mb-3 ${isLow ? 'border-l-4 border-l-red-500' : ''}" data-item-id="${it.id}" data-current-qty="${it.current_quantity}">
+      <div class="flex justify-between items-start gap-2">
+        <div class="min-w-0">
+          <p class="font-medium text-sm">${escapeHtml(it.name)} <span class="text-xs text-gray-500 font-normal">${escapeHtml(it.sku ? `· ${it.sku}` : '')}</span></p>
+          <p class="text-xs text-gray-500">${escapeHtml([it.category, it.unit].filter(Boolean).join(' · ') || 'Uncategorised')}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-sm font-bold ${isLow ? 'text-red-600' : 'text-green-700'}">${Number(it.current_quantity || 0).toLocaleString()} ${escapeHtml(it.unit || 'pcs')}</p>
+          ${isLow ? `<p class="text-xs font-bold text-red-600">⚠ Running low</p>` : `<p class="text-xs text-gray-400">reorder at ${Number(it.reorder_level || 0).toLocaleString()}</p>`}
+        </div>
+      </div>
+      ${isLow ? '<p class="text-xs text-red-600 mt-1">Stock is at or below the reorder level. You may want to order more.</p>' : ''}
+      <div class="flex gap-1 mt-2">
+        <button type="button" class="itemEditBtn mt-icon-btn edit" title="Edit" data-id="${it.id}">✎</button>
+        ${it.is_active ? `<button type="button" class="itemDeactivateBtn mt-icon-btn delete" title="Deactivate" data-id="${it.id}">🚫</button>` : `<button type="button" class="itemActivateBtn mt-icon-btn" title="Reactivate" data-id="${it.id}">✅</button>`}
+      </div>
+      ${isEditing ? `
+      <div class="mt-3 grid grid-cols-2 gap-2 edit-item-form">
+        <input class="itemName border rounded-lg px-3 py-2 text-sm" placeholder="Name *" value="${escapeHtml(it.name || '')}">
+        <input class="itemCategory border rounded-lg px-3 py-2 text-sm" placeholder="Category" value="${escapeHtml(it.category || '')}">
+        <input class="itemReorder border rounded-lg px-3 py-2 text-sm" type="number" min="0" step="1" placeholder="Reorder level" value="${it.reorder_level ?? 0}">
+        <input class="itemCost border rounded-lg px-3 py-2 text-sm" type="number" min="0" step="0.01" placeholder="Unit cost" value="${it.unit_cost ?? ''}">
+        <div class="col-span-2 flex gap-2">
+          <button type="button" class="itemSaveBtn mt-btn-primary" data-id="${it.id}">Save</button>
+          <button type="button" class="itemCancelBtn mt-btn-outline">Cancel</button>
+          <span class="itemMsg text-sm self-center"></span>
+        </div>
+      </div>` : ''}
+    </div>`;
+  }).join('') || '<p class="text-gray-400 text-sm">No items yet.</p>';
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mb-4 mt-fade-in">
+      <h2 class="font-medium mb-3">Add Inventory Item</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input id="newItemName" class="border rounded-lg px-3 py-2 text-sm" placeholder="Item name *">
+        <input id="newItemCategory" class="border rounded-lg px-3 py-2 text-sm" placeholder="Category">
+        <input id="newItemSku" class="border rounded-lg px-3 py-2 text-sm" placeholder="SKU / code">
+        <input id="newItemUnit" class="border rounded-lg px-3 py-2 text-sm" placeholder="Unit (e.g. pcs, kg, boxes)" value="pcs">
+        <input id="newItemReorder" class="border rounded-lg px-3 py-2 text-sm" type="number" min="0" step="1" placeholder="Reorder level" value="0">
+        <input id="newItemCost" class="border rounded-lg px-3 py-2 text-sm" type="number" min="0" step="0.01" placeholder="Unit cost">
+      </div>
+      <p id="newItemMsg" class="text-sm mt-2"></p>
+      <button id="addItemBtn" type="button" class="mt-btn-primary mt-3">Add Item</button>
+    </div>
+    <div class="mt-card p-4 mt-fade-in">
+      <h2 class="font-medium mb-3">Stock Levels</h2>
+      ${cards}
+    </div>`;
+
+  document.getElementById('addItemBtn').onclick = async () => {
+    const msg = document.getElementById('newItemMsg');
+    const name = document.getElementById('newItemName').value.trim();
+    if (!name) { msg.className = 'text-sm text-red-600 mt-2'; msg.textContent = 'Enter an item name.'; return; }
+    const { error } = await sb.rpc('add_inventory_item', {
+      p_company_id: myProfile.company_id,
+      p_name: name,
+      p_category: document.getElementById('newItemCategory').value.trim() || null,
+      p_sku: document.getElementById('newItemSku').value.trim() || null,
+      p_unit: document.getElementById('newItemUnit').value.trim() || 'pcs',
+      p_reorder_level: Number(document.getElementById('newItemReorder').value || 0),
+      p_unit_cost: document.getElementById('newItemCost').value ? Number(document.getElementById('newItemCost').value) : null
+    });
+    if (error) { msg.className = 'text-sm text-red-600 mt-2'; msg.textContent = error.message; return; }
+    msg.className = 'text-sm text-green-700 mt-2'; msg.textContent = 'Item added.';
+    ['newItemName','newItemCategory','newItemSku','newItemUnit','newItemReorder','newItemCost'].forEach(id => { const el = document.getElementById(id); if (el) el.value = el.id === 'newItemUnit' ? 'pcs' : el.id === 'newItemReorder' ? '0' : ''; });
+    renderItems(el);
+  };
+
+  el.querySelectorAll('.itemEditBtn').forEach(btn => {
+    btn.onclick = () => { storesItemEditingId = btn.dataset.id; renderItems(el); };
+  });
+  el.querySelectorAll('.itemCancelBtn').forEach(btn => {
+    btn.onclick = () => { storesItemEditingId = null; renderItems(el); };
+  });
+  el.querySelectorAll('.itemActivateBtn, .itemDeactivateBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const { error } = await sb.rpc('update_inventory_item', { p_id: btn.dataset.id, p_is_active: btn.classList.contains('itemActivateBtn') });
+      if (error) showToast(error.message); else renderItems(el);
+    };
+  });
+  el.querySelectorAll('.itemSaveBtn').forEach(btn => {
+    const row = el.querySelector(`[data-item-id="${btn.dataset.id}"]`);
+    btn.onclick = async () => {
+      const msg = row.querySelector('.itemMsg');
+      const name = row.querySelector('.itemName').value.trim();
+      if (!name) { msg.className = 'text-sm text-red-600'; msg.textContent = 'Name required.'; return; }
+      const { error } = await sb.rpc('update_inventory_item', {
+        p_id: btn.dataset.id,
+        p_name: name,
+        p_category: row.querySelector('.itemCategory').value.trim() || null,
+        p_reorder_level: row.querySelector('.itemReorder').value ? Number(row.querySelector('.itemReorder').value) : null,
+        p_unit_cost: row.querySelector('.itemCost').value ? Number(row.querySelector('.itemCost').value) : null
+      });
+      if (error) { msg.className = 'text-sm text-red-600'; msg.textContent = error.message; return; }
+      storesItemEditingId = null;
+      renderItems(el);
+    };
+  });
+}
+
+async function renderItemIn(el) {
+  const [{ data: items }, { data: suppliers }] = await Promise.all([
+    sb.rpc('list_inventory_items', { p_company_id: myProfile.company_id }),
+    sb.rpc('list_suppliers', { p_company_id: myProfile.company_id })
+  ]);
+  const itemOptions = (Array.isArray(items) ? items : []).filter(i => i.is_active !== false).map(i => `<option value="${i.id}">${escapeHtml(i.name)} (${Number(i.current_quantity || 0).toLocaleString()} ${escapeHtml(i.unit || 'pcs')})</option>`).join('');
+  const supplierOptions = ['<option value="">No supplier / other</option>', ...(Array.isArray(suppliers) ? suppliers : []).filter(s => s.is_active !== false).map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')];
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mt-fade-in">
+      <h2 class="font-medium mb-2">Record Stock In</h2>
+      <p class="text-sm text-gray-600 mb-3">Use this when stock arrives from a supplier or a return. For purchase orders, use <em>Purchase Orders → Mark received</em> instead — that also updates stock automatically.</p>
+      <label class="text-xs font-medium text-gray-500">Item</label>
+      <select id="inItemId" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${itemOptions || '<option value="">No items yet</option>'}</select>
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Quantity received</label>
+          <input id="inQty" type="number" min="0.01" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Reference (optional)</label>
+          <input id="inRef" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Invoice #, delivery note…">
+        </div>
+      </div>
+      <label class="text-xs font-medium text-gray-500">Supplier (optional)</label>
+      <select id="inSupplierId" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${supplierOptions}</select>
+      <p id="inMsg" class="text-sm mb-2"></p>
+      <button id="recordInBtn" type="button" class="mt-btn-primary">Record Stock In</button>
+    </div>`;
+
+  document.getElementById('recordInBtn').onclick = async () => {
+    const msg = document.getElementById('inMsg');
+    const itemId = document.getElementById('inItemId').value;
+    const qty = Number(document.getElementById('inQty').value);
+    if (!itemId || !qty || qty <= 0) { msg.className = 'text-sm text-red-600'; msg.textContent = 'Pick an item and enter a quantity above zero.'; return; }
+    const { error } = await sb.rpc('record_stock_movement', {
+      p_item_id: itemId,
+      p_movement_type: 'in',
+      p_quantity: qty,
+      p_reference: document.getElementById('inRef').value.trim() || null,
+      p_supplier_id: document.getElementById('inSupplierId').value || null
+    });
+    if (error) { msg.className = 'text-sm text-red-600'; msg.textContent = error.message; return; }
+    msg.className = 'text-sm text-green-700'; msg.textContent = 'Stock in recorded.';
+    document.getElementById('inQty').value = '';
+    document.getElementById('inRef').value = '';
+    renderItemIn(el);
+  };
+}
+
+async function renderItemOut(el) {
+  const { data: list } = await sb.rpc('list_inventory_items', { p_company_id: myProfile.company_id });
+  const items = Array.isArray(list) ? list : [];
+  const options = items.filter(i => i.is_active !== false).map(i => `<option value="${i.id}" data-qty="${i.current_quantity}">${escapeHtml(i.name)} (${Number(i.current_quantity || 0).toLocaleString()} ${escapeHtml(i.unit || 'pcs')})</option>`).join('');
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mt-fade-in">
+      <h2 class="font-medium mb-2">Record Stock Out</h2>
+      <p class="text-sm text-gray-600 mb-3">Use this when stock is used, sold, or written off.</p>
+      <label class="text-xs font-medium text-gray-500">Item</label>
+      <select id="outItemId" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${options || '<option value="">No items yet</option>'}</select>
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Quantity going out</label>
+          <input id="outQty" type="number" min="0.01" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Reference (optional)</label>
+          <input id="outRef" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Job #, reason…">
+        </div>
+      </div>
+      <p id="outMsg" class="text-sm mb-2"></p>
+      <button id="recordOutBtn" type="button" class="mt-btn-primary">Record Stock Out</button>
+    </div>`;
+
+  document.getElementById('recordOutBtn').onclick = async () => {
+    const msg = document.getElementById('outMsg');
+    const select = document.getElementById('outItemId');
+    const itemId = select.value;
+    const qty = Number(document.getElementById('outQty').value);
+    const available = Number(select.selectedOptions[0]?.dataset.qty || 0);
+    if (!itemId || !qty || qty <= 0) { msg.className = 'text-sm text-red-600'; msg.textContent = 'Pick an item and enter a quantity above zero.'; return; }
+    if (qty > available) { msg.className = 'text-sm text-red-600'; msg.textContent = `Only ${available.toLocaleString()} available. You can't remove more than that.`; return; }
+    const { error } = await sb.rpc('record_stock_movement', {
+      p_item_id: itemId,
+      p_movement_type: 'out',
+      p_quantity: qty,
+      p_reference: document.getElementById('outRef').value.trim() || null
+    });
+    if (error) {
+      const plain = error.message.includes('insufficient stock') || error.message.toLowerCase().includes('not enough')
+        ? 'Not enough stock for this quantity.'
+        : error.message;
+      msg.className = 'text-sm text-red-600'; msg.textContent = plain;
+      return;
+    }
+    msg.className = 'text-sm text-green-700'; msg.textContent = 'Stock out recorded.';
+    document.getElementById('outQty').value = '';
+    document.getElementById('outRef').value = '';
+    renderItemOut(el);
+  };
+}
+
+async function renderPurchaseOrders(el) {
+  if (storesPOMode === 'create') { await renderCreatePurchaseOrder(el); return; }
+  const { data: list, error } = await sb.rpc('list_purchase_orders', { p_company_id: myProfile.company_id });
+  if (error) { el.innerHTML = `<p class="text-red-600 text-center mt-6">${escapeHtml(error.message)}</p>`; return; }
+  const orders = Array.isArray(list) ? list : [];
+  const statusBadge = s => s === 'received' ? '<span class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Received</span>' : s === 'ordered' ? '<span class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">Ordered</span>' : `<span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">${escapeHtml(s)}</span>`;
+  const rows = orders.map(o => `
+    <div class="border rounded-xl p-3 mb-3">
+      <div class="flex justify-between items-start gap-2">
+        <div>
+          <p class="font-medium text-sm">${escapeHtml(o.supplier_name || 'Unknown supplier')}</p>
+          <p class="text-xs text-gray-500">${o.order_date ? new Date(o.order_date).toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' }) : '—'} · Expected ${o.expected_date ? new Date(o.expected_date).toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' }) : '—'}</p>
+        </div>
+        <div class="text-right shrink-0">
+          ${statusBadge(o.status)}
+          <p class="text-sm font-bold mt-1">GHS ${Number(o.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
+        </div>
+      </div>
+      ${o.status !== 'received' ? `<p class="text-xs text-gray-600 mt-2">When you receive this delivery, tap <strong>Mark received</strong>. The stock will be added automatically — don't also record an Item In.</p>` : ''}
+      <div class="flex gap-2 mt-2">
+        ${o.status !== 'received' ? `<button type="button" class="poReceiveBtn mt-btn-primary text-sm" data-id="${o.id}">Mark received</button>` : ''}
+      </div>
+    </div>`
+  ).join('') || '<p class="text-gray-400 text-sm">No purchase orders yet.</p>';
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mb-4 mt-fade-in">
+      <div class="flex justify-between items-center">
+        <h2 class="font-medium">Purchase Orders</h2>
+        <button id="newPOBtn" type="button" class="mt-btn-primary text-sm">＋ New Order</button>
+      </div>
+    </div>
+    <div class="mt-card p-4 mt-fade-in">
+      ${rows}
+    </div>`;
+
+  document.getElementById('newPOBtn').onclick = () => { storesPOMode = 'create'; renderPurchaseOrders(el); };
+  el.querySelectorAll('.poReceiveBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const { error } = await sb.rpc('receive_purchase_order', { p_po_id: btn.dataset.id });
+      if (error) { showToast(error.message); return; }
+      showToast('Order received — stock has been added.');
+      renderPurchaseOrders(el);
+    };
+  });
+}
+
+async function renderCreatePurchaseOrder(el) {
+  const [{ data: items }, { data: suppliers }] = await Promise.all([
+    sb.rpc('list_inventory_items', { p_company_id: myProfile.company_id }),
+    sb.rpc('list_suppliers', { p_company_id: myProfile.company_id })
+  ]);
+  const supplierOptions = (Array.isArray(suppliers) ? suppliers : []).filter(s => s.is_active !== false).map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  const itemOptions = (Array.isArray(items) ? items : []).filter(i => i.is_active !== false).map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
+
+  el.innerHTML = `
+    <div class="mt-card p-4 mt-fade-in">
+      <h2 class="font-medium mb-2">Create Purchase Order</h2>
+      <p class="text-sm text-gray-600 mb-3">Pick a supplier and the items you want. We'll calculate the total and keep it ordered until you receive it.</p>
+      <label class="text-xs font-medium text-gray-500">Supplier</label>
+      <select id="poSupplier" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">${supplierOptions || '<option value="">No suppliers yet</option>'}</select>
+      <label class="text-xs font-medium text-gray-500">Expected delivery date (optional)</label>
+      <input id="poExpected" type="date" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+      <div class="border-t pt-3 mb-3" style="border-color: var(--mt-border);">
+        <p class="text-sm font-medium text-gray-600 mb-2">Line items</p>
+        <div id="poLines" class="space-y-2"></div>
+        <button id="addPOLineBtn" type="button" class="mt-btn-outline text-sm mt-2">＋ Add item</button>
+      </div>
+      <p id="poMsg" class="text-sm mb-2"></p>
+      <div class="flex gap-2">
+        <button id="savePOBtn" type="button" class="mt-btn-primary">Create Order</button>
+        <button id="cancelPOBtn" type="button" class="mt-btn-outline">Cancel</button>
+      </div>
+    </div>`;
+
+  const lineTemplate = () => `
+    <div class="po-line grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <select class="poItem border rounded-lg px-3 py-2 text-sm">${itemOptions || '<option value="">No items</option>'}</select>
+      <input type="number" min="0.01" step="0.01" class="poQty border rounded-lg px-3 py-2 text-sm" placeholder="Quantity">
+      <input type="number" min="0" step="0.01" class="poCost border rounded-lg px-3 py-2 text-sm" placeholder="Unit cost (GHS)">
+    </div>`;
+
+  document.getElementById('addPOLineBtn').onclick = () => { document.getElementById('poLines').insertAdjacentHTML('beforeend', lineTemplate()); };
+  document.getElementById('poLines').innerHTML = lineTemplate();
+
+  document.getElementById('cancelPOBtn').onclick = () => { storesPOMode = 'list'; renderPurchaseOrders(el); };
+  document.getElementById('savePOBtn').onclick = async () => {
+    const msg = document.getElementById('poMsg');
+    const supplierId = document.getElementById('poSupplier').value;
+    const expected = document.getElementById('poExpected').value || null;
+    if (!supplierId) { msg.className = 'text-sm text-red-600'; msg.textContent = 'Pick a supplier.'; return; }
+    const lines = [];
+    let valid = false;
+    document.querySelectorAll('.po-line').forEach(row => {
+      const itemId = row.querySelector('.poItem').value;
+      const qty = Number(row.querySelector('.poQty').value);
+      const cost = Number(row.querySelector('.poCost').value);
+      if (itemId && qty > 0 && cost >= 0) { lines.push({ item_id: itemId, quantity: qty, unit_cost: cost }); valid = true; }
+    });
+    if (!valid) { msg.className = 'text-sm text-red-600'; msg.textContent = 'Add at least one item with quantity and cost.'; return; }
+    const { error } = await sb.rpc('create_purchase_order', {
+      p_company_id: myProfile.company_id,
+      p_supplier_id: supplierId,
+      p_expected_date: expected,
+      p_items: lines
+    });
+    if (error) { msg.className = 'text-sm text-red-600'; msg.textContent = error.message; return; }
+    storesPOMode = 'list';
+    renderPurchaseOrders(el);
+  };
 }
 
 init();
