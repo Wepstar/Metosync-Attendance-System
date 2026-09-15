@@ -67,6 +67,7 @@ let session = null;
 let myProfile = null;
 let myCompany = null;
 let myPermissions = [];
+let myAccessibleSections = null;
 let errorMsg = '';
 let activeTab = 'staff';
 
@@ -163,7 +164,7 @@ async function init() {
     console.error('Initialization error:', err);
   } finally {
     clearTimeout(slowNotice);
-    render();
+    await render();
   }
 }
 
@@ -189,11 +190,11 @@ async function loadProfile() {
   }
 }
 
-function render() {
+async function render() {
   if (!session || activeTab !== 'attendance') clearAttendanceAutoRefresh();
   if (!session) return renderLogin();
   if (!myProfile || !myCompany) return renderNoCompany();
-  renderDashboard();
+  await renderDashboard();
 }
 
 function renderLogin() {
@@ -219,7 +220,7 @@ function renderLogin() {
     if (error) { errorMsg = error.message; render(); return; }
     session = data.session;
     await loadProfile();
-    render();
+    await render();
   };
   app().querySelectorAll('input').forEach(el => {
     el.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
@@ -239,20 +240,21 @@ function renderNoCompany() {
   document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; render(); };
 }
 
-function renderDashboard() {
-    const plan = myCompany.service_plan || 'both';
-  const tabs = [
-    { id: 'executive', label: 'Company Staff' },
-    can('manage_staff') ? { id: 'staff', label: 'Staff' } : null,
-    can('manage_sites') ? { id: 'sites', label: 'Sites' } : null,
-    plan !== 'payroll' && can('view_reports') ? { id: 'attendance', label: 'Attendance' } : null,
-    plan !== 'attendance' && can('manage_payroll') ? { id: 'payroll', label: 'Payroll' } : null,
-    { id: 'records', label: 'Records' },
-    { id: 'supplies', label: 'Supplies' },
-    { id: 'stores', label: 'Stores & Inventory' },
-    can('manage_settings') ? { id: 'settings', label: 'Settings' } : null,
-    { id: 'contact', label: 'Contact & Support' },
-  ].filter(Boolean);
+async function renderDashboard() {
+  const { data: list, error } = await sb.rpc('list_my_accessible_sections', { p_company_id: myProfile.company_id });
+  if (error) {
+    app().innerHTML = `
+      <div class="mt-card p-6 text-center mt-10 max-w-md mx-auto">
+        <p class="text-red-600 mb-2">Could not load your menu.</p>
+        <p class="text-sm text-gray-500">${escapeHtml(error.message)}</p>
+        <button id="retryMenuBtn" class="mt-btn-outline mt-3">Retry</button>
+      </div>`;
+    document.getElementById('retryMenuBtn').onclick = () => { myAccessibleSections = null; render(); };
+    return;
+  }
+  myAccessibleSections = Array.isArray(list) ? list : [];
+  const tabs = myAccessibleSections.map(s => ({ id: s.section_code, label: s.section_name }));
+  if (!tabs.find(t => t.id === activeTab)) activeTab = tabs[0]?.id || 'staff';
 
   app().innerHTML = `
     <div class="mt-header rounded-2xl px-5 py-4 flex justify-between items-center mb-4 mt-4">
@@ -271,7 +273,7 @@ function renderDashboard() {
     <div id="tabContent"><p class="text-gray-400 text-center mt-10">Loading…</p></div>
     <aside id="sideRail" class="mt-rail"></aside>`;
 
-  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; companyStaffUnlocked = false; Object.keys(sectionUnlocks).forEach(k => delete sectionUnlocks[k]); Object.keys(tabSnapshots).forEach(k => delete tabSnapshots[k]); render(); };
+  document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); session = null; myProfile = null; myCompany = null; myAccessibleSections = null; companyStaffUnlocked = false; Object.keys(sectionUnlocks).forEach(k => delete sectionUnlocks[k]); Object.keys(tabSnapshots).forEach(k => delete tabSnapshots[k]); render(); };
   document.querySelectorAll('.tabBtn').forEach(btn => {
     btn.onclick = () => { activeTab = btn.dataset.tab; renderTabContent(); };
   });
@@ -354,6 +356,19 @@ function updateSideRail() {
   if (rail) rail.innerHTML = RAIL_CONTENT[activeTab] || '';
 }
 
+const sectionRenderers = {
+  staff: renderStaff,
+  sites: renderSites,
+  attendance: renderAttendance,
+  payroll: renderPayroll,
+  records: renderRecords,
+  supplies: renderSupplies,
+  stores: renderStoresInventory,
+  settings: renderSettings,
+  executive: renderExecutive,
+  contact: renderContact,
+};
+
 async function renderTabContent() {
   const token = ++renderToken;
   const realEl = document.getElementById('tabContent');
@@ -369,65 +384,45 @@ async function renderTabContent() {
 
   if (targetTab !== 'attendance') clearAttendanceAutoRefresh();
   let job;
-  if (targetTab === 'executive') job = renderExecutive(el);
-  else if (targetTab === 'sites') job = guardSection(el, 'sites', renderSites);
-  else if (targetTab === 'staff') job = guardSection(el, 'staff', renderStaff);
-  else if (targetTab === 'attendance') job = guardSection(el, 'attendance', renderAttendance);
-  else if (targetTab === 'payroll') job = guardSection(el, 'payroll', renderPayroll);
-  else if (targetTab === 'records') job = guardSection(el, 'records', renderRecords);
-  else if (targetTab === 'supplies') job = guardSection(el, 'supplies', renderSupplies);
-  else if (targetTab === 'stores') job = renderStoresInventory(el);
-  else if (targetTab === 'settings') job = guardSection(el, 'settings', renderSettings);
-  else if (targetTab === 'contact') job = renderContact(el);
+  if (sectionRenderers[targetTab]) job = guardSection(el, targetTab, sectionRenderers[targetTab]);
   else { el.innerHTML = `<div class="mt-card p-6 mt-fade-in"><p class="text-gray-400 text-center">— content comes next —</p></div>`; job = Promise.resolve(); }
 
   await job;
-  if (token === renderToken && document.getElementById('tabContent') === realEl && activeTab === targetTab && targetTab !== 'executive') tabSnapshots[targetTab] = realEl.innerHTML;
+  if (token === renderToken && document.getElementById('tabContent') === realEl && activeTab === targetTab) tabSnapshots[targetTab] = realEl.innerHTML;
 }
 
 // ===== SECTION PASSWORD GATES =====
 
-const SECTION_LABELS = { staff: 'Staff', sites: 'Sites', attendance: 'Attendance', payroll: 'Payroll', records: 'Records', supplies: 'Supplies & Equipment', settings: 'Settings' };
 const sectionUnlocks = {};
 
 async function guardSection(el, code, renderFn) {
   if (sectionUnlocks[code]) return renderFn(el);
+  const sec = (myAccessibleSections || []).find(s => s.section_code === code);
+  if (sec && (sec.full_access || !sec.requires_password)) { sectionUnlocks[code] = true; return renderFn(el); }
+  if (!sec) { return renderFn(el); }
   if (!el.innerHTML.trim()) el.innerHTML = `<p class="text-gray-400 text-center mt-6">Loading…</p>`;
-  const { data, error } = await sb.rpc('company_section_password_is_set', { p_company_id: myProfile.company_id, p_section_code: code });
-  if (error || data !== true) { sectionUnlocks[code] = true; return renderFn(el); }
-  renderSectionGate(el, code, renderFn);
+  renderSectionGate(el, sec, renderFn);
 }
 
-function renderSectionGate(el, code, renderFn) {
-  const isDirector = ['owner', 'executive_director'].includes(myProfile.role);
-  const label = SECTION_LABELS[code] || 'This section';
+function renderSectionGate(el, sec, renderFn) {
   el.innerHTML = `<div class="mt-card p-6 max-w-md mx-auto mt-6 mt-fade-in">
-    <h2 class="font-medium mb-1">🔒 ${escapeHtml(label)}</h2>
+    <h2 class="font-medium mb-1">🔒 ${escapeHtml(sec.section_name || 'This section')}</h2>
     <p class="text-sm text-gray-500 mb-4">This department is protected by a password. Enter it to continue.</p>
     <input id="secPassword" type="password" placeholder="Department password" class="block w-full border rounded-lg px-3 py-2 text-sm mb-2" autocomplete="off">
     <p id="secGateError" class="text-red-600 text-sm mb-2"></p>
     <button id="secUnlockBtn" type="button" class="mt-btn-primary w-full">Unlock</button>
-    ${isDirector ? `<div class="border-t mt-4 pt-4" style="border-color:var(--mt-border)"><p class="text-xs text-gray-500 mb-2">Director options — you can unlock with any password, or set a new one below.</p><div class="flex gap-2"><input id="secNewPassword" type="password" placeholder="New department password" class="flex-1 border rounded-lg px-3 py-2 text-sm" autocomplete="off"><button id="secSetPasswordBtn" type="button" class="mt-btn-outline text-sm">Set/change password</button></div><p id="secSetMsg" class="text-sm mt-2"></p></div>` : ''}
   </div>`;
   const input = document.getElementById('secPassword');
   const tryUnlock = async () => {
     const errorEl = document.getElementById('secGateError');
-    const { data, error } = await sb.rpc('verify_company_section_password', { p_company_id: myProfile.company_id, p_section_code: code, p_password: input.value });
+    if (!input.value) { errorEl.textContent = 'Enter a password.'; return; }
+    const { data, error } = await sb.rpc('verify_company_section_password', { p_company_id: myProfile.company_id, p_section_code: sec.section_code, p_password: input.value });
     if (error) { errorEl.textContent = error.message; return; }
-    if (data === true || (data && data.ok)) { sectionUnlocks[code] = true; renderFn(el); return; }
+    if (data === true || (data && data.ok)) { sectionUnlocks[sec.section_code] = true; renderFn(el); return; }
     errorEl.textContent = 'That password is not correct.';
   };
   document.getElementById('secUnlockBtn').onclick = tryUnlock;
   input.onkeydown = e => { if (e.key === 'Enter') tryUnlock(); };
-  const setBtn = document.getElementById('secSetPasswordBtn');
-  if (setBtn) setBtn.onclick = async () => {
-    const msg = document.getElementById('secSetMsg');
-    const pw = document.getElementById('secNewPassword').value;
-    if (!pw) { msg.className = 'text-sm mt-2 text-red-600'; msg.textContent = 'Type a new password first.'; return; }
-    const { error } = await sb.rpc('set_company_section_password', { p_company_id: myProfile.company_id, p_section_code: code, p_password: pw });
-    msg.className = `text-sm mt-2 ${error ? 'text-red-600' : 'text-green-700'}`;
-    msg.textContent = error ? error.message : 'Department password updated.';
-  };
 }
 
 function toRad(deg) { return deg * (Math.PI / 180); }
@@ -2423,7 +2418,6 @@ function renderCompanyStaffGate(el) {
 }
 
 async function renderExecutive(el) {
-  if (!companyStaffUnlocked) return renderCompanyStaffGate(el);
   if (execSubTab === 'approvals') return renderExecApprovals(el);
   if (execSubTab === 'reports') return renderExecReports(el);
   if (execSubTab === 'access' && ['owner', 'executive_director'].includes(myProfile.role)) return renderSectionAccess(el);

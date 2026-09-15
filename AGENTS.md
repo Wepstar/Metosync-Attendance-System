@@ -37,30 +37,41 @@ This document is written for Watchguard (and future AI agents) so they can under
 ### Permission check
 - Frontend: `can(permission)` in `admin.html` (loaded from `my_permissions` RPC).
 - Backend: `has_permission(p_admin_id, p_permission)` SQL function.
-- **Tabs are gated** in `admin.html` `renderDashboard()` by `can(...)`.
+- **Tabs are gated** in `admin.html` by `list_my_accessible_sections(p_company_id)`; the header menu is built from the returned sections, not by `can(...)`.
 - **Common issue**: `admin_users_role_check` violation means existing rows have invalid/null roles. Fix with `028_fix_admin_role_constraint.sql`.
 
 ## 4. Admin Dashboard (`admin.html`) Layout
 
 ### Tab routing (`renderTabContent`)
+- `executive` → `renderExecutive` (Company Staff)
 - `staff` → `renderStaff`
 - `sites` → `renderSites`
 - `attendance` → `renderAttendance` (also embeds Location Checker + Broadcast Notifications)
 - `payroll` → `renderPayroll`
 - `records` → `renderRecords`
 - `supplies` → `renderSupplies`
+- `stores` → `renderStoresInventory`
 - `settings` → settings
 - `contact` → `renderContact`
 
 > **Note**: Watch Guard was removed from the admin menu and now lives in the Owner Dashboard (`platform.html`) with whole-system access.
 > **Note**: Admin management (`Admins` tab) was removed from `admin.html` and now lives in the Registry side (`platform.html`) for support-team access.
 
+### Header menu (`renderDashboard`)
+- On login, `admin.html` calls `list_my_accessible_sections(p_company_id)` and builds the top tab bar from the returned rows.
+- `myAccessibleSections` is stored in memory and is the single source of truth for which header tabs exist; no tab is hardcoded or shown greyed-out.
+- Only `section_code` values returned by that RPC appear as tabs; `section_name` is used for the label.
+- `full_access = true` or `requires_password = false` means the tab renders directly.
+- `requires_password = true` routes the tab through `guardSection` → `renderSectionGate`.
+- `myAccessibleSections`, `sectionUnlocks`, and `tabSnapshots` are cleared on logout.
+
 ### Per-section password gates (`guardSection` / `renderSectionGate`)
-- Every workspace tab except **Company Staff** (its own gate) and **Contact & Support** passes through `guardSection(el, code, renderFn)` in `renderTabContent`. The section code equals the tab id (`staff`, `sites`, `attendance`, `payroll`, `records`, `supplies`, `settings`).
-- Flow: `company_section_password_is_set(p_company_id, p_section_code)` → `false`/error = straight in; `true` = password prompt → `verify_company_section_password(p_company_id, p_section_code, p_password)` must return `true`.
-- Unlocks are memoized in `sectionUnlocks` (in-memory) and cleared on logout along with `companyStaffUnlocked`.
-- Owners/executive_directors see a **Set/change department password** form on each gate → `set_company_section_password(p_company_id, p_section_code, p_password)`. Their server-side bypass means verify returns `true` regardless of input.
-- Enforcement of hidden sections is a backend follow-up; the gate is UI-level only.
+- Every workspace tab from `list_my_accessible_sections` passes through `guardSection(el, code, renderFn)` in `renderTabContent`.
+- `guardSection` looks up the section in `myAccessibleSections`.
+- If `full_access` is true or `requires_password` is false, the render runs immediately.
+- If `requires_password` is true, `renderSectionGate` shows a password prompt and calls `verify_company_section_password(p_company_id, p_section_code, p_password)`.
+- `verify` must return `true` before the actual `renderFn` runs.
+- Unlocks are memoized in `sectionUnlocks` (in-memory) and cleared on logout.
 
 ### Staff Tab (`renderStaff`)
 **What it does**
@@ -152,7 +163,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 
 ### Company Staff Tab (`renderExecutive`, tab id `executive`)
 **Structure**
-- Top-level tab labeled **Company Staff**, shown to every logged-in admin user — but gated behind the shared staff password. `renderCompanyStaffGate` asks for it; `verify_company_staff_password(p_company_id, p_password)` must return `true` before any content renders. The unlock is held in memory only (`companyStaffUnlocked`) — a page refresh re-locks it.
+- Top-level tab labeled **Company Staff** (section code `executive`), shown only if `list_my_accessible_sections` returns it. Like other workspaces, it routes through `guardSection` and respects `full_access`/`requires_password`; the `verify_company_staff_password` gate is no longer used.
 - Owners and executive directors additionally see a **Set/change password** form on the gate and a **🔑 Password** sub-tab inside, both calling `set_company_staff_password(p_company_id, p_password)`.
 - Sub-nav (`execSubTab`) sits at the top under the header tabs: **Overview** (default), **Approvals**, **Reports**, **Leave**, plus owner/executive_director-only **🔓 Section Access** and **🔑 Password**.
 - Deep links: `admin.html?tab=executive&sub=overview|approvals|reports|leave|access|password` — the gate still runs first.
@@ -167,7 +178,7 @@ This document is written for Watchguard (and future AI agents) so they can under
 **Reports** — date range + Attendance/Payroll/Payments/Staff selector → `report_attendance_summary` / `report_payroll_summary` / `report_payments_summary` (all take `p_start`/`p_end`) / `report_staff_summary` (snapshot, `p_company_id` only, no dates).
 
 **What can go wrong**
-- Gate never opens → `verify_company_staff_password` missing/false; if no password was ever set, a director must set one first (gate's director form or the 🔑 Password tab).
+- Gate never opens → `verify_company_section_password` for `section_code = 'executive'` missing/false; the section must appear in `list_my_accessible_sections` and `requires_password` must be true for the prompt to appear.
 - Access grid empty or checkbox reverts → `list_staff_section_access`/`set_staff_section_access` missing or erroring; check the red message under the grid.
 - Section Access/Password sub-tabs missing → caller's `admin_users.role` isn't `owner`/`executive_director`.
 - Overview error "function does not exist" → `executive_dashboard_summary` was built server-side only; confirm it's deployed and refresh the schema cache.

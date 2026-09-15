@@ -344,16 +344,74 @@ Check items off as they're completed. This file is the actual answer to
       `verify_company_section_password` (built-in ED/Owner/Registry
       bypass returns true immediately, no password check) +
       `company_section_password_is_set`
-- [ ] **Relationship to the checkbox grid (staff_section_access), worth
-      understanding**: these are two different mechanisms that can coexist
-      — the checkbox grid is config-driven (ED/Registry pre-decides who
-      can see what, invisible to staff until they try), while this is
-      secret-knowledge-driven (staff must know/enter a password). Not
-      mutually exclusive, but worth deciding deliberately whether both are
-      wanted long-term or if this supersedes the checkbox grid for some
-      sections — not resolved, flagging rather than deciding unilaterally.
-- [ ] Devin: build the per-department password prompt UI (same pattern as
-      the Company Staff gate) — prompt below
+- [x] **Relationship to the checkbox grid (staff_section_access), now
+      resolved**: they compose cleanly rather than conflicting — the
+      checkbox grid decides whether a section appears in the menu at all;
+      the password decides whether, once visible, it opens directly or
+      needs unlocking first. Both stay, neither supersedes the other.
+- [x] Devin: build the per-department password prompt UI (same pattern as
+      the Company Staff gate) — prompt sent earlier
+
+## ✅ Done — blank-until-unlocked login menu behavior
+
+- [x] **Idea**: on login, the main header menu starts blank; as a staff
+      member unlocks/has access to sections, only those tabs appear —
+      the rest stay genuinely absent (not greyed out). Full-access roles
+      (Executive Director, Owner) see everything immediately.
+- [x] Built `list_my_accessible_sections(p_company_id)` — one call for the
+      frontend to use at login: returns only the sections the CURRENT user
+      (never a parameter, no spoofing surface) can see at all, each
+      flagged with whether it needs a department password first, and
+      whether the caller has full access. A section absent from the
+      result is what makes the menu genuinely blank rather than disabled.
+- [x] Confirmed "config at Metosync's end" is already fully satisfied by
+      what's built — `app_sections`, `staff_section_access`, and
+      `company_section_passwords` are all Registry-editable already; no
+      new configuration mechanism needed.
+- [ ] Devin: wire the header menu to this — prompt below
+
+## ✅ Done — Unified Registry dashboard (from mockup)
+
+- [x] Reviewed uploaded mockup ("Unified Registry Services" — activity
+      logs, organizations overview, activity heatmap). Found real gaps
+      against existing `registry_list_all_activity`: no actor ("who did
+      it") attribution surfaced despite the data already existing
+      (`performed_by`/`changed_by` columns), no date-range or organization
+      filtering, no aggregate stats or heatmap function.
+- [x] Built `registry_list_all_activity_v2(p_company_id, p_start, p_end,
+      p_limit)` — adds actor name/role and filtering, reusing existing
+      actor columns rather than adding new ones
+- [x] Built `platform_registry_overview()` — Total Integrated Firms,
+      Active Organizations, Archived/Inactive, Pending Approvals (defined
+      as open Watchguard findings platform-wide — **assumption, not a
+      given spec**, correct if you meant something else)
+- [x] Built `platform_activity_heatmap(p_days)` — top 5 most active
+      companies with daily event counts, for the heatmap widget
+- [x] `platform_list_companies()` already existed — reused directly for
+      the organization filter dropdown, no changes needed
+- [ ] Devin: build the Registry dashboard per the mockup — prompt below
+
+## ✅ Done — section-code mismatch caught before first run (Devin's caveat)
+
+- [x] Confirmed precisely, system by system, in response to a pre-launch
+      caveat: `company_staff_passwords` has no section code (one password
+      per company, nothing to remap); `company_section_passwords` (per-
+      department password) is free text with no seeded codes — Devin's
+      tab ids (staff/sites/attendance/payroll/records/supplies/settings)
+      work exactly as sent, no remapping needed.
+- [x] **Real bug found and fixed**: `staff_section_access` (the checkbox
+      grid) was built cross-joining against `portfolios` (role/workspace
+      names like `payroll_officer`, `stores_inventory`) rather than actual
+      tab ids — a write with a tab id would silently succeed but never
+      appear in the grid UI, meaning every gate would have shown "no
+      password set"/no visible checkbox and let everyone straight in.
+      Fixed by introducing `app_sections` (a proper, Registry-editable
+      catalog, same pattern as `portfolios`), seeded with the exact 7 real
+      tab codes, and rebuilding `list_staff_section_access` to cross-join
+      against it instead. `registry_add_app_section` lets new tabs be
+      added later without a migration.
+- [x] All tables confirmed empty pre-launch — this was caught before any
+      real data existed, not a live production bug
 
 ## ⬜ Phase 1 — Foundation
 
@@ -447,7 +505,22 @@ Payroll = Finance & Payroll workspace core. Reframed below to reflect that.
 
 ## ⬜ Phase 2 — Operations
 
-- [ ] Stores & Inventory workspace
+- [~] **Stores & Inventory workspace** — backend built from scratch (this
+      was genuinely new, unlike most of Phase 1 which reused existing
+      infrastructure)
+  - [x] Suppliers: `add_supplier`, `list_suppliers`, `update_supplier`
+  - [x] Inventory items with running stock levels: `add_inventory_item`,
+        `list_inventory_items` (with a low-stock-only filter),
+        `update_inventory_item`
+  - [x] Stock movements (Item In / Item Out, matching the Invenity
+        reference image): `record_stock_movement` (atomically updates the
+        item's running quantity, blocks over-drawing stock on 'out',
+        logs to company_activity_log), `list_stock_movements`
+  - [x] Purchase orders: `create_purchase_order` (with line items),
+        `list_purchase_orders`, `receive_purchase_order` (automatically
+        creates the matching stock-in movements for every line item on
+        receipt — no separate manual step needed)
+  - [ ] Devin: build the Stores & Inventory workspace UI — prompt below
 - [ ] Operations Manager workspace
 - [ ] Sales & Marketing workspace
 

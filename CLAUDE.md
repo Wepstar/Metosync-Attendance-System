@@ -80,9 +80,19 @@ outside. Every rule below maps to a real bug that was live in production.
 - **Backend** (schema, RPCs, RLS, Watchguard) is built by Claude with live,
   audited Supabase access. This is where the rules above are enforced.
 - **Frontend** is built by Devin/Windsurf against a *fixed interface* —
-  an exact RPC name, its parameters, and what it returns. Devin never
-  queries tables directly, never invents backend logic, and never gets
-  direct Supabase project or migration access.
+  an exact RPC name, its parameters, and what it returns.
+- **As of this update, Devin has READ-ONLY access to the backend** — it can
+  look up exact RPC signatures, table structures, and current data itself
+  rather than relying purely on Claude's prompts to describe them. Use this
+  to reduce mismatches (e.g. a prompt describing a signature slightly
+  wrong) — Devin should verify against the real schema before assuming a
+  prompt's description is exact.
+- This does NOT change the write boundary: Devin still never queries
+  tables directly for app functionality (reads through RPCs only, per the
+  security rules above), never invents backend logic, and never gets
+  migration/write access. Schema and RPC changes remain exclusively
+  Claude's responsibility — this is what keeps one place accountable for
+  anything that touches data or money.
 - Backend ships before its matching Devin prompt is written. See
   `PLANNING.md` §7 for the prompt template.
 
